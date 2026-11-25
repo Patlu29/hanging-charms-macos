@@ -124,6 +124,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         ropes.submenu = ropeMenu
         menu.addItem(ropes)
+        menu.addItem(HangingMenus.hangFrom(store: environment.store))
+        menu.addItem(HangingMenus.breeze(store: environment.store))
 
         let sounds = NSMenuItem(title: "Charm Sounds", action: #selector(toggleSounds), keyEquivalent: "")
         sounds.state = settings.sounds ? .on : .off

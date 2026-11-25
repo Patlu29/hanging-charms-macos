@@ -9,7 +9,7 @@ never touches the network.
 
 ![Every built-in charm](Docs/media/catalogue.png)
 
-<img src="Docs/media/customised.png" alt="Three charms on a red and white chain with a glow along the cord and a teal light under a larger heart" width="360">
+<img src="Docs/media/customised.png" alt="Three charms on a red and white chain hanging from a silver grappling hook, with blue beads, lobster clasps and a teal light under a larger heart" width="360">
 
 ## Features
 
@@ -25,8 +25,15 @@ never touches the network.
   under a hard throw.
 - **Make your own.** Drop a photo (PNG, JPEG, HEIC, WebP, SVG or PDF) on the hanging
   charm, or use **Create**. Apple's Vision framework cuts the subject out on your Mac.
-- **Make it yours.** Rope colours, thickness and pattern; glow colour, brightness and
-  size; a size for each charm on the rope; swing weight, settle speed and hang height.
+- **Hang it anywhere.** From the menu bar, the camera notch, the top of the front window
+  (it swings when you move the window), or any spot you drag the top of the rope to.
+- **Hooks and grapples.** Each charm hangs from a tied knot, S-hook, fish hook, lobster
+  clasp, carabiner or jump ring; the rope hangs from a grappling hook, pin, nail, binder
+  clip or suction cup. Every one in gold, silver, rose gold, bronze, black or the rope's
+  own colour.
+- **Make it yours.** Rope colours, thread thickness (25% to 600%), pattern, link size and
+  beads; glow colour, brightness and size; a size for each charm on the rope; swing
+  weight, settle speed, and a gentle or windy breeze.
 - **Motion and mood.** Elastic and pointer-reactive ropes, swing that changes with the
   time of day, a breathing glow, and synthesised charm chimes.
 - **Out of the way.** Click-through everywhere but the charm; always on top or on the
@@ -58,6 +65,7 @@ menu and move it to the Bin.
 - **Grab** a charm and throw it. **Double-click** it to open the Library.
 - **Flick** the pointer quickly through a charm to knock it; a slow approach lets you
   pick it up instead.
+- **Drag the top of the rope** to hang it somewhere else.
 - **Right-click** it for the Library, Create, Appearance, the rope picker, or Hide.
 - **Drop a picture** on it to make a charm of your own.
 
@@ -101,8 +109,20 @@ swift run HangingCharms --render-scene scene.png goldChain
 ```
 
 ```bash
-swift run HangingCharms --render-customize appearance customize.png
+swift run HangingCharms --render-customize appearance customize.png hooks
 ```
+
+```bash
+swift run HangingCharms --render-hooks hooks.png
+```
+
+And an end-to-end check of the real overlay, driven by synthetic mouse events:
+
+```bash
+swift run HangingCharms --self-test
+```
+
+![Every hook and grapple](Docs/media/hooks.png)
 
 ## How it is put together
 

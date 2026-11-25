@@ -26,6 +26,14 @@ public final class RopeSimulation {
     public private(set) var massScale: Double
 
     public private(set) var isSleeping = false
+
+    /// Peak sideways push of the breeze, as a fraction of gravity. Zero is still air.
+    /// While there is a breeze the rope never sleeps.
+    public var breeze: Double = 0 {
+        didSet { if breeze > 0 { wake() } }
+    }
+    /// Simulated time, which drives the gusts.
+    private var clock: Double = 0
     public private(set) var lastStepCount = 0
 
     /// Impacts since the last ``drainImpacts()``, each an intensity in 0...1.
@@ -167,7 +175,9 @@ public final class RopeSimulation {
     }
 
     private func integrate(timeStep: Double) {
-        let gravityStep = CGPoint(x: 0, y: configuration.gravity * timeStep * timeStep)
+        clock += timeStep
+        let gust = breeze > 0 ? configuration.gravity * breeze * Gust.value(at: clock) : 0
+        let gravityStep = CGPoint(x: gust * timeStep * timeStep, y: configuration.gravity * timeStep * timeStep)
         let damping = configuration.damping
         let limit = configuration.maximumSpeed * timeStep
         for index in points.indices where index != dragIndex && points[index].inverseMass > 0 {
@@ -189,7 +199,7 @@ public final class RopeSimulation {
     }
 
     private func updateSleepState() {
-        guard dragIndex == nil else {
+        guard dragIndex == nil, breeze <= 0 else {
             stillFrames = 0
             return
         }

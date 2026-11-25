@@ -104,6 +104,9 @@ final class SelfTest {
         missedClickCheck()
         flickCheck()
         settingsChecks()
+        hangingChecks()
+        grappleDragChecks()
+        breezeChecks()
         visibilityAndSleepChecks()
 
         overlay.stop()
@@ -261,6 +264,94 @@ final class SelfTest {
         pump(0.05)
         check("thread thickness, links, pattern and colours apply without rebuilding the rope", rope.layout.slots.count == 3)
         store.update { $0.charmIDs = ["evil-eye"]; $0.ropeStyle = .leather; $0.ropeThickness = 1 }
+        pump(0.05)
+    }
+
+    private func hangingChecks() {
+        let frame = panel.frame
+        store.update { $0.hangPoint = .notch; $0.hangDrop = 0 }
+        pump(0.05)
+        let notch = rope.anchor
+        check("notch mode hangs from the middle of the top of the screen",
+              abs(notch.x - frame.width / 2) < frame.width * 0.1 && notch.y < 60,
+              "anchor \(notch)")
+
+        store.update { $0.hangPoint = .frontWindow; $0.horizontalPosition = 0.5 }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? frame.height
+        let topCG = primaryHeight - frame.maxY
+        let window = CGRect(x: frame.minX + 300, y: topCG + 250, width: 700, height: 400)
+        overlay.simulateFrontWindow(window)
+        pump(0.05)
+        check("front window mode hangs from the window's top edge",
+              rope.anchor.distance(to: CGPoint(x: 650, y: 250)) < 1, "anchor \(rope.anchor)")
+        overlay.simulateFrontWindow(window.offsetBy(dx: 120, dy: 40))
+        pump(0.05)
+        check("moving the window moves the rope with it",
+              rope.anchor.distance(to: CGPoint(x: 770, y: 290)) < 1 && !rope.isSleeping)
+
+        store.update { $0.hangPoint = .anywhere; $0.pinX = 0.25; $0.pinY = 0.3 }
+        pump(0.05)
+        check("anywhere mode hangs from the pinned spot",
+              rope.anchor.distance(to: CGPoint(x: frame.width * 0.25, y: frame.height * 0.3)) < 1)
+
+        store.update { $0.hangPoint = .menuBar; $0.horizontalPosition = 0.5 }
+        pump(0.05)
+        check("back to the menu bar", abs(rope.anchor.x - frame.width / 2) < frame.width * 0.05)
+        for _ in 0..<40 where !rope.isSleeping { pump(0.25) }
+    }
+
+    private func grappleDragChecks() {
+        let frame = panel.frame
+        let start = rope.anchor
+        let side = rope.configuration.charmUnit * 0.12 * store.settings.grappleSize
+        let eye = AttachmentArtwork.eyeY(for: store.settings.grappleStyle)
+        let grip = CGPoint(x: start.x, y: start.y - (0.5 - Double(eye)) * side)
+        overlay.simulatePointer(atScreen: screen(grip))
+        check("hovering the grapple makes the panel take the mouse", !panel.ignoresMouseEvents)
+        send(.leftMouseDown, atCanvas: grip)
+        check("pressing the grapple picks up the top of the rope", overlay.testIsMovingAnchor && !rope.isDragging)
+        let destination = CGPoint(x: frame.width * 0.3, y: frame.height * 0.35)
+        for step in 1...12 {
+            let t = Double(step) / 12
+            send(.leftMouseDragged, atCanvas: CGPoint(x: grip.x + (destination.x - grip.x) * t, y: grip.y + (destination.y - grip.y) * t))
+            pump(1.0 / 60)
+        }
+        check("the rope's top follows the drag", rope.anchor.distance(to: destination) < 1)
+        send(.leftMouseUp, atCanvas: destination)
+        pump(0.05)
+        let pin = CGPoint(x: store.settings.pinX * frame.width, y: store.settings.pinY * frame.height)
+        check("dropping the grapple pins the rope there", store.settings.hangPoint == .anywhere && pin.distance(to: destination) < 1,
+              "pinned at \(pin)")
+        check("the rope is still hanging from the drop point", rope.anchor.distance(to: destination) < 1)
+        var swung = 0.0
+        for _ in 0..<20 {
+            pump(1.0 / 60)
+            swung = max(swung, abs(rope.charmRing(slot: 0).x - destination.x))
+        }
+        check("moving the top sets the charm swinging", swung > 5, String(format: "%.1f pt", swung))
+        overlay.simulatePointer(atScreen: screen(CGPoint(x: 10, y: frame.height - 10)))
+        store.update { $0.hangPoint = .menuBar }
+        pump(0.05)
+    }
+
+    private func breezeChecks() {
+        for _ in 0..<60 where !rope.isSleeping { pump(0.25) }
+        let still = rope.charmRing(slot: 0)
+        store.update { $0.breeze = .windy }
+        var moved = 0.0
+        var worst = 0.0
+        for _ in 0..<30 {
+            pump(0.1)
+            moved = max(moved, rope.charmRing(slot: 0).distance(to: still))
+            worst = max(worst, rope.maximumStretch)
+        }
+        check("a breeze sways a resting charm", moved > 3, String(format: "%.1f pt", moved))
+        check("the breeze keeps the frame loop running", !overlay.isFrameLoopPaused && !rope.isSleeping)
+        check("the breeze stays inside the stretch ceiling", worst <= store.settings.ropeStyle.physics.maxStretchRatio + 0.002)
+        store.update { $0.reduceMotion = true }
+        pump(0.05)
+        check("Reduce Motion calms the breeze", rope.breeze == 0)
+        store.update { $0.reduceMotion = false; $0.breeze = .still }
         pump(0.05)
     }
 

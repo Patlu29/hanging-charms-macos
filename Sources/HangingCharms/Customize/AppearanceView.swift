@@ -3,7 +3,7 @@ import SwiftUI
 import HangingCharmsCore
 
 enum AppearanceTab: String, CaseIterable, Identifiable {
-    case rope, hooks, light, charms, motion, system
+    case rope, hooks, hanging, light, charms, motion, system
 
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum AppearanceTab: String, CaseIterable, Identifiable {
         switch self {
         case .rope: "Rope"
         case .hooks: "Hooks"
+        case .hanging: "Hanging"
         case .light: "Light"
         case .charms: "Charms"
         case .motion: "Motion"
@@ -46,7 +47,7 @@ struct AppearanceView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 540)
+            .frame(maxWidth: 620)
             .padding(.top, 14)
             .padding(.horizontal, 20)
 
@@ -54,6 +55,7 @@ struct AppearanceView: View {
                 switch tab {
                 case .rope: ropeSections
                 case .hooks: hookSections
+                case .hanging: hangingSections
                 case .light: lightSections
                 case .charms: charmSections
                 case .motion: motionSections
@@ -119,6 +121,76 @@ struct AppearanceView: View {
                 slider("Bead size", value: binding(\.beadSize), in: AppSettings.beadSizeRange, format: "%.1f×", scale: 1)
             }
             .disabled(store.settings.beads == .none)
+        }
+    }
+
+    // MARK: - Hanging
+
+    @ViewBuilder
+    private var hangingSections: some View {
+        Section("Hang from") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
+                ForEach(HangPoint.allCases) { point in
+                    let symbol = switch point {
+                    case .menuBar: "menubar.rectangle"
+                    case .notch: "laptopcomputer"
+                    case .frontWindow: "macwindow"
+                    case .anywhere: "hand.point.up.left"
+                    }
+                    attachmentTile(title: point.displayName, selected: store.settings.hangPoint == point,
+                                   image: NSImage(systemSymbolName: symbol, accessibilityDescription: point.displayName)?
+                                       .withSymbolConfiguration(.init(pointSize: 26, weight: .regular))) {
+                        store.update { $0.hangPoint = point }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            Text(store.settings.hangPoint.summary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            switch store.settings.hangPoint {
+            case .menuBar:
+                slider("Across the screen", value: binding(\.horizontalPosition), in: 0...1, format: "%.0f%%", scale: 100)
+                slider("Hang below the menu bar", value: binding(\.hangDrop), in: AppSettings.hangDropRange, format: "%.0f pt", scale: 1)
+            case .notch:
+                slider("Hang below the notch", value: binding(\.hangDrop), in: AppSettings.hangDropRange, format: "%.0f pt", scale: 1)
+            case .frontWindow:
+                slider("Across the window", value: binding(\.horizontalPosition), in: 0...1, format: "%.0f%%", scale: 100)
+            case .anywhere:
+                slider("Across", value: binding(\.pinX), in: 0...1, format: "%.0f%%", scale: 100)
+                slider("Down", value: binding(\.pinY), in: 0...0.9, format: "%.0f%%", scale: 100)
+            }
+            Text("Tip: drag the top of the rope to hang it anywhere.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Section("Breeze") {
+            Picker("Breeze", selection: binding(\.breeze)) {
+                ForEach(Breeze.allCases) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Text(store.settings.breeze == .still
+                 ? "The charm moves only when something moves it, and costs nothing while it rests."
+                 : "The charm sways on its own. It never fully rests, so it uses a little more power.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+
+        Section("Screen") {
+            Picker("Display", selection: Binding(
+                get: { store.settings.displayKey ?? "" },
+                set: { value in store.update { $0.displayKey = value.isEmpty ? nil : value } }
+            )) {
+                Text("Main display").tag("")
+                ForEach(NSScreen.screens, id: \.self) { screen in
+                    Text(screen.localizedName).tag(DisplayChoice.key(for: screen))
+                }
+            }
+            Picker("Window", selection: binding(\.level)) {
+                ForEach(OverlayLevel.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }
         }
     }
 
@@ -294,22 +366,6 @@ struct AppearanceView: View {
             Toggle("Reduce motion", isOn: binding(\.reduceMotion))
                 .help("The charm hangs still and moves only when you move it.")
         }
-        Section("Position") {
-            slider("Across the screen", value: binding(\.horizontalPosition), in: 0...1, format: "%.0f%%", scale: 100)
-            slider("Hang below the menu bar", value: binding(\.hangDrop), in: AppSettings.hangDropRange, format: "%.0f pt", scale: 1)
-            Picker("Display", selection: Binding(
-                get: { store.settings.displayKey ?? "" },
-                set: { value in store.update { $0.displayKey = value.isEmpty ? nil : value } }
-            )) {
-                Text("Main display").tag("")
-                ForEach(NSScreen.screens, id: \.self) { screen in
-                    Text(screen.localizedName).tag(DisplayChoice.key(for: screen))
-                }
-            }
-            Picker("Window", selection: binding(\.level)) {
-                ForEach(OverlayLevel.allCases, id: \.self) { Text($0.displayName).tag($0) }
-            }
-        }
         Section("Sound") {
             Toggle("Charm sounds", isOn: binding(\.sounds))
             HStack {
@@ -417,7 +473,7 @@ struct AboutView: View {
                 Text(version).foregroundStyle(.secondary)
                 Text("Charms hang from a rope on your desktop. Push one and it swings, with the weight and settle of a real one.")
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 540)
+                    .frame(maxWidth: 620)
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
                     GridRow { Text("Physics").foregroundStyle(.secondary); Text("Verlet rope, 20 segments, fixed 240 Hz") }
                     GridRow { Text("Charms").foregroundStyle(.secondary); Text("\(CharmCatalog.all.count) built in, \(CharmCollection.allCases.count) collections, plus your own") }

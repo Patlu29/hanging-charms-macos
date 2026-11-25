@@ -28,6 +28,7 @@ final class OverlayController: NSObject {
     private var dragSamples: [(time: TimeInterval, point: CGPoint)] = []
     private var lastCursor: (time: TimeInterval, point: CGPoint)?
     private var isPointerOverCharm = false
+    private var isRelaxedRate = false
 
     init(store: SettingsStore, library: CharmLibrary, audio: AudioService) {
         self.store = store
@@ -84,7 +85,12 @@ final class OverlayController: NSObject {
             if let rope { renderer.render(rope) }
         }
         if new.charmShadow != old.charmShadow || Connector.from(new) != Connector.from(old) { updateCharmImages() }
-        if new.horizontalPosition != old.horizontalPosition || new.hangDrop != old.hangDrop { placeAnchor() }
+        if new.horizontalPosition != old.horizontalPosition || new.hangDrop != old.hangDrop
+            || new.hangPoint != old.hangPoint || new.pinX != old.pinX || new.pinY != old.pinY {
+            updateWindowTracking()
+            placeAnchor()
+        }
+        if new.breeze != old.breeze || new.reduceMotion != old.reduceMotion { applyBreeze() }
         if new.opacity != old.opacity { panel?.alphaValue = new.opacity }
         if new.level != old.level { panel?.setLevel(new.level) }
         if new.glow != old.glow || new.charmIDs != old.charmIDs || new.charmSize != old.charmSize
@@ -124,8 +130,7 @@ final class OverlayController: NSObject {
 
         refreshTimeProfile(force: true)
         let configuration = makeConfiguration()
-        let anchor = OverlayPlacement.anchor(screenFrame: frame, visibleFrame: target.visibleFrame,
-                                             horizontal: settings.horizontalPosition, drop: settings.hangDrop)
+        let anchor = anchorPoint(on: target)
         resolved = settings.charmIDs.map(library.resolveOrDefault)
         let reduce = settings.reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         rope = RopeSimulation(
@@ -136,6 +141,8 @@ final class OverlayController: NSObject {
         configureRenderer()
         updateCharmImages()
         updateGlow()
+        applyBreeze()
+        updateWindowTracking()
 
         let link = view.displayLink(target: self, selector: #selector(tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
@@ -236,10 +243,111 @@ final class OverlayController: NSObject {
     }
 
     private func placeAnchor() {
-        guard let screen, let rope else { return }
-        rope.setAnchor(OverlayPlacement.anchor(screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
-                                               horizontal: store.settings.horizontalPosition, drop: store.settings.hangDrop))
+        guard let screen, let rope, !isMovingAnchor else { return }
+        let anchor = anchorPoint(on: screen)
+        guard anchor != rope.anchor else { return }
+        rope.setAnchor(anchor)
         wake()
+    }
+
+    // MARK: - Hanging points
+
+    /// Where the rope hangs from on `screen`, in canvas points, for the chosen mode.
+    private func anchorPoint(on screen: NSScreen) -> CGPoint {
+        let settings = store.settings
+        let frame = screen.frame, visible = screen.visibleFrame
+        let menuBar = OverlayPlacement.anchor(screenFrame: frame, visibleFrame: visible,
+                                              horizontal: settings.horizontalPosition, drop: settings.hangDrop)
+        switch settings.hangPoint {
+        case .menuBar:
+            return menuBar
+        case .notch:
+            func local(_ area: CGRect?) -> CGRect? {
+                guard let area, !area.isEmpty else { return nil }
+                // These are reported in global coordinates on some systems.
+                return area.minX >= frame.minX && frame.minX != 0 ? area.offsetBy(dx: -frame.minX, dy: -frame.minY) : area
+            }
+            var point = OverlayPlacement.notchAnchor(screenFrame: frame, visibleFrame: visible,
+                                                     leftArea: local(screen.auxiliaryTopLeftArea),
+                                                     rightArea: local(screen.auxiliaryTopRightArea))
+            point.y += min(max(settings.hangDrop, 0), visible.height * 0.5)
+            return point
+        case .frontWindow:
+            guard let window = trackedWindow else { return menuBar }
+            return OverlayPlacement.windowAnchor(window: window, screenFrame: frame, visibleFrame: visible,
+                                                 primaryHeight: Double(NSScreen.screens.first?.frame.height ?? frame.height),
+                                                 horizontal: settings.horizontalPosition)
+        case .anywhere:
+            return OverlayPlacement.pinnedAnchor(pin: CGPoint(x: settings.pinX, y: settings.pinY), screenFrame: frame)
+        }
+    }
+
+    /// The front window's frame in CGWindowList coordinates, while hanging from it.
+    private var trackedWindow: CGRect?
+    private var windowTimer: Timer?
+
+    private func updateWindowTracking() {
+        guard store.settings.hangPoint == .frontWindow else {
+            windowTimer?.invalidate()
+            windowTimer = nil
+            trackedWindow = nil
+            return
+        }
+        refreshTrackedWindow()
+        guard windowTimer == nil else { return }
+        // Twenty looks a second is smooth enough for the anchor: the rope's own physics
+        // turns each step of a moving window into a swing.
+        windowTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshTrackedWindow() }
+        }
+    }
+
+    private func refreshTrackedWindow() {
+        // The self-test supplies its own window; the real ones would overwrite it.
+        guard followsRealPointer, let screen else { return }
+        let found = FrontWindow.frame(on: screen)
+        // While our own app (Customize) is in front, keep hanging from the last window.
+        guard let found else { return }
+        guard found != trackedWindow else { return }
+        trackedWindow = found
+        placeAnchor()
+    }
+
+    /// For the self-test: hang from a made-up window.
+    func simulateFrontWindow(_ frame: CGRect) {
+        trackedWindow = frame
+        placeAnchor()
+    }
+
+    // MARK: - Moving the top of the rope
+
+    private var isMovingAnchor = false
+
+    /// How close to the top of the rope a press has to be to pick it up.
+    private var grappleReach: Double {
+        let settings = store.settings
+        guard settings.grappleStyle != .none, let rope else { return 12 }
+        return rope.configuration.charmUnit * 0.12 * settings.grappleSize * 0.5 + 6
+    }
+
+    private func isOverGrapple(_ point: CGPoint) -> Bool {
+        guard let rope else { return false }
+        // The grapple sits above where the rope is tied, so measure from its middle.
+        let eye = AttachmentArtwork.eyeY(for: store.settings.grappleStyle)
+        let side = rope.configuration.charmUnit * 0.12 * store.settings.grappleSize
+        let centre = CGPoint(x: rope.anchor.x, y: rope.anchor.y - (0.5 - Double(eye)) * side)
+        return point.distance(to: centre) <= grappleReach
+    }
+
+    var testIsMovingAnchor: Bool { isMovingAnchor }
+
+    // MARK: - Breeze
+
+    private func applyBreeze() {
+        let settings = store.settings
+        let calm = settings.reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        rope?.breeze = calm ? 0 : settings.breeze.strength
+        if rope?.breeze ?? 0 > 0 { wake() }
     }
 
     private func refreshTimeProfile(force: Bool = false) {
@@ -286,6 +394,14 @@ final class OverlayController: NSObject {
         guard let previous = lastTimestamp else { return }
         rope.step(deltaTime: now - previous)
         renderer.render(rope)
+        // A breeze alone is a slow sway: sixty frames a second is plenty and costs half.
+        let relaxed = rope.breeze > 0 && !rope.isDragging && !isMovingAnchor
+        if relaxed != isRelaxedRate {
+            isRelaxedRate = relaxed
+            link.preferredFrameRateRange = relaxed
+                ? CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+                : CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        }
         // The charm moves under a still pointer too, so hover is re-checked every frame:
         // a swinging charm can then be caught, and a click where it used to be goes
         // through to the app underneath.
@@ -332,7 +448,8 @@ final class OverlayController: NSObject {
 
     // MARK: - Testing hooks
 
-    /// False while the self-test drives the overlay, so the real cursor cannot interfere.
+    /// False while the self-test drives the overlay, so the real cursor and the real
+    /// front window cannot interfere.
     var followsRealPointer = true
     private var simulatedPointer: CGPoint?
     var testRope: RopeSimulation? { rope }
@@ -361,9 +478,9 @@ final class OverlayController: NSObject {
     /// - Returns: The pointer in canvas points, when there is a panel to measure against.
     @discardableResult
     private func updateHover() -> CGPoint? {
-        guard let rope, let panel, panel.isVisible, !rope.isDragging,
+        guard let rope, let panel, panel.isVisible, !rope.isDragging, !isMovingAnchor,
               let point = canvasPoint(fromScreen: pointerLocation) else { return nil }
-        let over = rope.canGrab(at: point)
+        let over = rope.canGrab(at: point) || isOverGrapple(point)
         if over != isPointerOverCharm {
             isPointerOverCharm = over
             panel.ignoresMouseEvents = !over
@@ -395,6 +512,13 @@ final class OverlayController: NSObject {
         // The charm swung away between the last hover check and this click: stop
         // holding the mouse so the next click reaches the app underneath.
         guard rope.canGrab(at: point) else {
+            if isOverGrapple(point) {
+                // Picking up the top of the rope, to hang it somewhere else.
+                isMovingAnchor = true
+                NSCursor.closedHand.set()
+                wake()
+                return
+            }
             isPointerOverCharm = false
             panel?.ignoresMouseEvents = true
             NSCursor.arrow.set()
@@ -412,6 +536,13 @@ final class OverlayController: NSObject {
     }
 
     func mouseDragged(_ event: NSEvent) {
+        if isMovingAnchor, let rope, let point = canvasPoint(of: event), let panel {
+            let clamped = CGPoint(x: min(max(point.x, 8), panel.frame.width - 8),
+                                  y: min(max(point.y, 0), panel.frame.height * 0.9))
+            rope.setAnchor(clamped)
+            wake()
+            return
+        }
         guard let rope, rope.isDragging, let point = canvasPoint(of: event) else { return }
         dragSamples.append((event.timestamp, point))
         dragSamples.removeAll { event.timestamp - $0.time > 0.08 }
@@ -425,6 +556,21 @@ final class OverlayController: NSObject {
 
     func mouseUp(_ event: NSEvent) {
         guard let rope else { return }
+        if isMovingAnchor {
+            mouseDragged(event)
+            isMovingAnchor = false
+            if let screen {
+                let pin = OverlayPlacement.pin(for: rope.anchor, screenFrame: screen.frame)
+                store.update {
+                    $0.hangPoint = .anywhere
+                    $0.pinX = pin.x
+                    $0.pinY = pin.y
+                }
+            }
+            isPointerOverCharm = false
+            pointerMoved()
+            return
+        }
         if rope.isDragging {
             mouseDragged(event)
             rope.endDrag()
@@ -453,6 +599,8 @@ final class OverlayController: NSObject {
         }
         ropes.submenu = ropeMenu
         menu.addItem(ropes)
+        menu.addItem(HangingMenus.hangFrom(store: store))
+        menu.addItem(HangingMenus.breeze(store: store))
         menu.addItem(.separator())
         menu.addItem(withTitle: "Hide Charm", action: #selector(menuHide), keyEquivalent: "").target = self
         NSMenu.popUpContextMenu(menu, with: event, for: view)

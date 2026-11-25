@@ -65,6 +65,13 @@ public struct AppSettings: Equatable, Sendable, Codable {
     /// Bead diameter as a multiple of the cord's width.
     public var beadSize: Double = 2.6
 
+    // MARK: Hanging
+    public var hangPoint: HangPoint = .default
+    /// Where the rope is pinned in ``HangPoint/anywhere``, as fractions of the screen.
+    public var pinX: Double = 0.5
+    public var pinY: Double = 0.25
+    public var breeze: Breeze = .still
+
     // MARK: Hook and grapple
     public var hookStyle: HookStyle = .default
     public var hookFinish: AttachmentFinish = .matchRope
@@ -195,7 +202,8 @@ public struct AppSettings: Equatable, Sendable, Codable {
              customRopeColors, ropePrimary, ropeSecondary, ropeThickness, ropePattern, showPin, ropeGlow,
              customGlowColor, glowColor, glowIntensity, glowSize, glowBreathing,
              charmScales, charmShadow, swingWeight, settleSpeed, hangDrop,
-             linkSize, beads, beadColor, beadSize, hookStyle, hookFinish, hookSize, grappleStyle, grappleFinish, grappleSize
+             linkSize, beads, beadColor, beadSize, hookStyle, hookFinish, hookSize, grappleStyle, grappleFinish, grappleSize,
+             hangPoint, pinX, pinY, breeze
     }
 
     public init(from decoder: any Decoder) throws {
@@ -267,6 +275,10 @@ public struct AppSettings: Equatable, Sendable, Codable {
         grappleStyle = ((try? c.decodeIfPresent(GrappleStyle.self, forKey: .grappleStyle)) ?? nil) ?? d.grappleStyle
         grappleFinish = ((try? c.decodeIfPresent(AttachmentFinish.self, forKey: .grappleFinish)) ?? nil) ?? d.grappleFinish
         grappleSize = number(.grappleSize, Self.grappleSizeRange, d.grappleSize)
+        hangPoint = ((try? c.decodeIfPresent(HangPoint.self, forKey: .hangPoint)) ?? nil) ?? d.hangPoint
+        pinX = number(.pinX, 0...1, d.pinX)
+        pinY = number(.pinY, 0...0.9, d.pinY)
+        breeze = ((try? c.decodeIfPresent(Breeze.self, forKey: .breeze)) ?? nil) ?? d.breeze
         // Older documents with the pin turned off meant "nothing at the top".
         if !showPin, (try? c.decodeIfPresent(GrappleStyle.self, forKey: .grappleStyle)) == nil { grappleStyle = .none }
     }
@@ -321,6 +333,10 @@ public struct AppSettings: Equatable, Sendable, Codable {
         try c.encode(grappleStyle, forKey: .grappleStyle)
         try c.encode(grappleFinish, forKey: .grappleFinish)
         try c.encode(grappleSize, forKey: .grappleSize)
+        try c.encode(hangPoint, forKey: .hangPoint)
+        try c.encode(pinX, forKey: .pinX)
+        try c.encode(pinY, forKey: .pinY)
+        try c.encode(breeze, forKey: .breeze)
     }
 
     // MARK: - Persistence helpers

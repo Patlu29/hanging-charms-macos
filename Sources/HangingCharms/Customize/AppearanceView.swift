@@ -3,13 +3,14 @@ import SwiftUI
 import HangingCharmsCore
 
 enum AppearanceTab: String, CaseIterable, Identifiable {
-    case rope, light, charms, motion, system
+    case rope, hooks, light, charms, motion, system
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .rope: "Rope"
+        case .hooks: "Hooks"
         case .light: "Light"
         case .charms: "Charms"
         case .motion: "Motion"
@@ -45,13 +46,14 @@ struct AppearanceView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 460)
+            .frame(maxWidth: 540)
             .padding(.top, 14)
             .padding(.horizontal, 20)
 
             Form {
                 switch tab {
                 case .rope: ropeSections
+                case .hooks: hookSections
                 case .light: lightSections
                 case .charms: charmSections
                 case .motion: motionSections
@@ -84,7 +86,10 @@ struct AppearanceView: View {
                 Divider()
                 ForEach(RopeAppearance.Pattern.allCases) { Text($0.displayName).tag(RopeAppearance.Pattern?.some($0)) }
             }
-            slider("Thickness", value: binding(\.ropeThickness), in: AppSettings.ropeThicknessRange, format: "%.0f%%", scale: 100)
+            slider("Thread thickness", value: binding(\.ropeThickness), in: AppSettings.ropeThicknessRange, format: "%.0f%%", scale: 100)
+                .help("From a quarter of the style's width up to six times it.")
+            slider("Link and twist size", value: binding(\.linkSize), in: AppSettings.linkSizeRange, format: "%.0f%%", scale: 100)
+                .help("How long each chain link or twist of the cord is.")
             Toggle("Custom colours", isOn: binding(\.customRopeColors))
             if store.settings.customRopeColors {
                 ColorPicker("Main colour", selection: colour(\.ropePrimary), supportsOpacity: false)
@@ -99,11 +104,105 @@ struct AppearanceView: View {
                     }
                 }
             }
-            Toggle("Show the pin it hangs from", isOn: binding(\.showPin))
             slider("Rope length", value: binding(\.ropeLength), in: AppSettings.ropeLengthRange, format: "%.0f%%", scale: 100)
             Toggle("Elastic", isOn: binding(\.elastic))
                 .help("The cord gives when it is pulled, up to half again its length.")
         }
+
+        Section("Beads") {
+            Picker("Beads on the rope", selection: binding(\.beads)) {
+                ForEach(BeadDensity.allCases) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Group {
+                ColorPicker("Bead colour", selection: colour(\.beadColor), supportsOpacity: false)
+                slider("Bead size", value: binding(\.beadSize), in: AppSettings.beadSizeRange, format: "%.1f×", scale: 1)
+            }
+            .disabled(store.settings.beads == .none)
+        }
+    }
+
+    // MARK: - Hooks
+
+    @ViewBuilder
+    private var hookSections: some View {
+        Section("Top of the rope") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+                ForEach(GrappleStyle.allCases) { style in
+                    attachmentTile(title: style.displayName, selected: store.settings.grappleStyle == style,
+                                   image: grapplePreview(style)) {
+                        store.update { $0.grappleStyle = style }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            Group {
+                Picker("Finish", selection: binding(\.grappleFinish)) {
+                    ForEach(AttachmentFinish.allCases) { Text($0.displayName).tag($0) }
+                }
+                slider("Size", value: binding(\.grappleSize), in: AppSettings.grappleSizeRange, format: "%.0f%%", scale: 100)
+            }
+            .disabled(store.settings.grappleStyle == .none)
+        }
+
+        Section {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+                ForEach(HookStyle.allCases) { style in
+                    attachmentTile(title: style.displayName, selected: store.settings.hookStyle == style,
+                                   image: hookPreview(style)) {
+                        store.update { $0.hookStyle = style }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            Picker("Finish", selection: binding(\.hookFinish)) {
+                ForEach(AttachmentFinish.allCases) { Text($0.displayName).tag($0) }
+            }
+            slider("Size", value: binding(\.hookSize), in: AppSettings.hookSizeRange, format: "%.0f%%", scale: 100)
+        } header: {
+            Text("Where each charm hangs")
+        } footer: {
+            Text("A tied knot uses no metal at all: the cord runs straight into the charm.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func hookPreview(_ style: HookStyle) -> NSImage? {
+        var settings = store.settings
+        settings.hookStyle = style
+        settings.hookSize = 1
+        guard let image = AttachmentArtwork.connectorPreview(Connector.from(settings), pixels: 120) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: 60, height: 60))
+    }
+
+    private func grapplePreview(_ style: GrappleStyle) -> NSImage? {
+        let palette = store.settings.grappleFinish.palette(rope: store.settings.resolvedRopeAppearance)
+        guard let image = AttachmentArtwork.grappleImage(style, base: palette.base, highlight: palette.highlight,
+                                                         shadow: palette.shadow, pixels: 120) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: 60, height: 60))
+    }
+
+    private func attachmentTile(title: String, selected: Bool, image: NSImage?, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 4) {
+            Group {
+                if let image {
+                    Image(nsImage: image).resizable().interpolation(.high)
+                } else {
+                    Image(systemName: "nosign").font(.title2).foregroundStyle(.tertiary)
+                }
+            }
+            .frame(width: 52, height: 52)
+            Text(title).font(.caption).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
     // MARK: - Light
@@ -318,7 +417,7 @@ struct AboutView: View {
                 Text(version).foregroundStyle(.secondary)
                 Text("Charms hang from a rope on your desktop. Push one and it swings, with the weight and settle of a real one.")
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
+                    .frame(maxWidth: 540)
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
                     GridRow { Text("Physics").foregroundStyle(.secondary); Text("Verlet rope, 20 segments, fixed 240 Hz") }
                     GridRow { Text("Charms").foregroundStyle(.secondary); Text("\(CharmCatalog.all.count) built in, \(CharmCollection.allCases.count) collections, plus your own") }

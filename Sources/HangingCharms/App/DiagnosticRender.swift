@@ -19,6 +19,10 @@ enum DiagnosticRender {
             renderCustomize(page: CustomizePage(rawValue: arguments[flag + 1]) ?? .library, to: URL(fileURLWithPath: arguments[flag + 2]))
             return true
         }
+        if let flag = arguments.firstIndex(of: "--render-hooks"), flag + 1 < arguments.count {
+            renderHooks(to: URL(fileURLWithPath: arguments[flag + 1]))
+            return true
+        }
         if let flag = arguments.firstIndex(of: "--import-picture"), flag + 2 < arguments.count {
             let input = URL(fileURLWithPath: arguments[flag + 1]), output = URL(fileURLWithPath: arguments[flag + 2])
             var done = false
@@ -107,6 +111,15 @@ enum DiagnosticRender {
             settings.customGlowColor = true
             settings.glowColor = RGBA(hex: 0x3FE0C8)
             settings.glowSize = 1.6
+            settings.hookStyle = .lobsterClasp
+            settings.hookFinish = .silver
+            settings.hookSize = 1.3
+            settings.grappleStyle = .grapplingHook
+            settings.grappleFinish = .silver
+            settings.grappleSize = 1.4
+            settings.beads = .few
+            settings.beadColor = RGBA(hex: 0x2F6FDE)
+            settings.linkSize = 1.6
         }
         let size = CGSize(width: 700, height: 760)
         let library = CharmLibrary(directory: FileManager.default.temporaryDirectory.appendingPathComponent("hc-diag-\(UUID().uuidString)"))
@@ -116,7 +129,7 @@ enum DiagnosticRender {
             let scale = settings.scale(for: charm.id)
             return CharmMetrics(mass: charm.metrics.mass * scale, sizeScale: charm.metrics.sizeScale * scale)
         }
-        let rope = RopeSimulation(configuration: configuration, anchor: CGPoint(x: size.width / 2, y: 10),
+        let rope = RopeSimulation(configuration: configuration, anchor: CGPoint(x: size.width / 2, y: 40),
                                   charms: metrics, massScale: style.physics.charmMassScale, startAngle: 0.5)
         for _ in 0..<18 { rope.step(deltaTime: 1 / 60) }
 
@@ -124,9 +137,17 @@ enum DiagnosticRender {
         renderer.root.frame = CGRect(origin: .zero, size: size)
         renderer.setCanvas(height: size.height, scale: 2)
         renderer.configure(look: settings.resolvedRopeAppearance, unit: configuration.charmUnit,
-                           showPin: settings.showPin, ropeGlow: settings.ropeGlow)
+                           ropeGlow: settings.ropeGlow, linkSize: settings.linkSize)
+        let grappleSide = CGFloat(configuration.charmUnit * 0.12 * settings.grappleSize)
+        let grapplePalette = settings.grappleFinish.palette(rope: settings.resolvedRopeAppearance)
+        renderer.setGrapple(AttachmentArtwork.grappleImage(settings.grappleStyle, base: grapplePalette.base, highlight: grapplePalette.highlight,
+                                                           shadow: grapplePalette.shadow, pixels: Int(grappleSide * 2)),
+                            side: grappleSide, eyeY: AttachmentArtwork.eyeY(for: settings.grappleStyle))
+        renderer.setBeads(spacing: settings.beads.spacingFraction.map { CGFloat(configuration.charmUnit * $0) }, color: settings.beadColor,
+                          diameter: CGFloat(max(0.5, configuration.charmUnit * settings.resolvedRopeAppearance.widthScale) * settings.beadSize))
         let diameters = rope.layout.slots.map { CGFloat($0.radius * 2) }
-        renderer.setCharms(zip(charms, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: 2, shadow: settings.charmShadow) }, diameters: diameters)
+        let connector = Connector.from(settings)
+        renderer.setCharms(zip(charms, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: 2, shadow: settings.charmShadow, connector: connector) }, diameters: diameters)
         renderer.setGlow(enabled: true, color: settings.customGlowColor ? settings.glowColor : charms.last!.glowColor,
                          diameter: diameters.last!, intensity: settings.glowIntensity, size: settings.glowSize, breathing: false)
         renderer.render(rope)
@@ -139,6 +160,66 @@ enum DiagnosticRender {
         renderer.root.render(in: ctx)
         if let image = ctx.makeImage() { writePNG(image, to: url) }
         print(String(format: "stretch %.4f  sleeping %@", rope.maximumStretch, rope.isSleeping ? "yes" : "no"))
+    }
+
+    /// Every hook on several charm shapes, and every grapple in every finish.
+    private static func renderHooks(to url: URL) {
+        let library = CharmLibrary(directory: FileManager.default.temporaryDirectory.appendingPathComponent("hc-diag-\(UUID().uuidString)"))
+        let charms = ["evil-eye", "hamsa", "tortoise", "heart", "crescent", "plane"].compactMap { library.resolve($0) }
+        let finishes: [AttachmentFinish] = [.matchRope, .gold, .silver, .roseGold, .bronze, .black]
+        let cell: CGFloat = 130, scale: CGFloat = 2
+        let columns = max(charms.count, finishes.count)
+        let rows = HookStyle.allCases.count + GrappleStyle.allCases.count
+        let width = Int(cell * CGFloat(columns + 1) * scale), height = Int(cell * CGFloat(rows) * scale)
+        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return }
+        ctx.setFillColor(CGColor(srgbRed: 0.82, green: 0.85, blue: 0.9, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        func label(_ text: String, row: Int) {
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: 12 * scale, weight: .semibold), .foregroundColor: NSColor.black,
+            ]))
+            ctx.textPosition = CGPoint(x: 8 * scale, y: (CGFloat(rows - 1 - row) + 0.45) * cell * scale)
+            CTLineDraw(line, ctx)
+        }
+        var failures: [String] = []
+        var rope = AppSettings()
+        rope.ropeStyle = .goldChain
+        for (row, style) in HookStyle.allCases.enumerated() {
+            label(style.displayName, row: row)
+            rope.hookStyle = style
+            rope.hookFinish = finishes[row % finishes.count]
+            let connector = Connector.from(rope)
+            for (column, charm) in charms.enumerated() {
+                let side = cell * 0.9 * scale
+                guard let image = CharmArtwork.image(for: charm, diameter: cell * 0.9, scale: scale, connector: connector) else {
+                    failures.append("\(style.rawValue)/\(charm.id)")
+                    continue
+                }
+                let origin = CGPoint(x: CGFloat(column + 1) * cell * scale, y: CGFloat(rows - 1 - row) * cell * scale)
+                ctx.draw(image, in: CGRect(x: origin.x + (cell * scale - side) / 2, y: origin.y + (cell * scale - side) / 2, width: side, height: side))
+            }
+        }
+        for (index, style) in GrappleStyle.allCases.enumerated() {
+            let row = HookStyle.allCases.count + index
+            label(style.displayName, row: row)
+            for (column, finish) in finishes.enumerated() {
+                let palette = finish.palette(rope: RopeStyle.goldChain.appearance)
+                let image = AttachmentArtwork.grappleImage(style, base: palette.base, highlight: palette.highlight,
+                                                           shadow: palette.shadow, pixels: Int(cell * 0.6 * scale))
+                if image == nil, style != .none { failures.append("grapple \(style.rawValue)") }
+                guard let image else { continue }
+                let side = cell * 0.6 * scale
+                let origin = CGPoint(x: CGFloat(column + 1) * cell * scale, y: CGFloat(rows - 1 - row) * cell * scale)
+                ctx.draw(image, in: CGRect(x: origin.x + (cell * scale - side) / 2, y: origin.y + (cell * scale - side) / 2, width: side, height: side))
+            }
+        }
+        if let image = ctx.makeImage() { writePNG(image, to: url) }
+        if !failures.isEmpty {
+            print("Failed: \(failures.joined(separator: ", "))")
+            exit(1)
+        }
     }
 
     /// A Customize page, drawn offscreen.

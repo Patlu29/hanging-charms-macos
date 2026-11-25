@@ -20,14 +20,23 @@ enum CharmArtwork {
     /// Whether the charm currently being drawn casts a drop shadow.
     private static var drawsShadow = true
 
+    /// The hook every charm is drawn with unless one is passed in. Set from settings.
+    static var connector = Connector.default
+    private static var activeConnector = Connector.default
+    /// Where the body of the charm being drawn starts, recorded by ``drawBail(_:to:finish:)``.
+    private static var bodyTop: CGFloat = 0.84
+
     static func clearCache() { cache.removeAll() }
 
     // MARK: - Entry points
 
-    static func image(for charm: ResolvedCharm, diameter: CGFloat, scale: CGFloat, shadow: Bool = true) -> CGImage? {
+    static func image(for charm: ResolvedCharm, diameter: CGFloat, scale: CGFloat, shadow: Bool = true,
+                      connector: Connector? = nil) -> CGImage? {
         let pixels = Int((diameter * scale).rounded())
         guard pixels > 4 else { return nil }
-        let key = "\(charm.id)@\(pixels)\(shadow ? "" : "-flat")"
+        let hook = connector ?? Self.connector
+        let key = "\(charm.id)@\(pixels)\(shadow ? "" : "-flat")#\(hook.key)"
+        activeConnector = hook
         drawsShadow = shadow
         defer { drawsShadow = true }
         if let cached = cache[key] { return cached }
@@ -68,6 +77,7 @@ enum CharmArtwork {
         let d = CGFloat(pixels)
         ctx.scaleBy(x: d, y: d) // unit space from here
 
+        bodyTop = bodyBox.maxY
         withCharmShadow(ctx, d: d) {
             switch art {
             case let .cutout(symbol, finish):
@@ -86,6 +96,7 @@ enum CharmArtwork {
             case let .drawn(shape):
                 DrawnCharms.draw(shape, in: ctx, pixels: pixels)
             }
+            AttachmentArtwork.drawConnector(ctx, activeConnector, top: ringAnchorY, bodyTop: bodyTop)
         }
         return ctx.makeImage()
     }
@@ -95,10 +106,9 @@ enum CharmArtwork {
         let d = CGFloat(pixels)
         ctx.scaleBy(x: d, y: d)
         withCharmShadow(ctx, d: d) {
-            drawRing(ctx, finish: .gold)
             let rect = fit(picture, in: bodyBox)
-            drawBail(ctx, to: inkTop(of: picture, in: rect), finish: .gold)
             ctx.draw(picture, in: rect)
+            AttachmentArtwork.drawConnector(ctx, activeConnector, top: ringAnchorY, bodyTop: inkTop(of: picture, in: rect))
         }
         return ctx.makeImage()
     }
@@ -128,35 +138,13 @@ enum CharmArtwork {
         }
     }
 
-    /// The jump ring the rope ties to.
-    static func drawRing(_ ctx: CGContext, finish: CharmFinish) {
-        let centre = CGPoint(x: 0.5, y: 0.915)
-        let radius: CGFloat = 0.048
-        ctx.saveGState()
-        ctx.setLineWidth(0.022)
-        ctx.setStrokeColor(finish.shadow.cg)
-        ctx.strokeEllipse(in: CGRect(x: centre.x - radius, y: centre.y - radius - 0.004, width: radius * 2, height: radius * 2))
-        ctx.setStrokeColor(finish.base.cg)
-        ctx.strokeEllipse(in: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
-        ctx.setLineWidth(0.008)
-        ctx.setStrokeColor(finish.highlight.cg.copy(alpha: 0.8) ?? finish.highlight.cg)
-        ctx.addArc(center: centre, radius: radius + 0.004, startAngle: .pi * 0.55, endAngle: .pi * 0.95, clockwise: false)
-        ctx.strokePath()
-        ctx.restoreGState()
-    }
+    /// Charms no longer carry a ring of their own: the chosen ``Connector`` is drawn
+    /// after the body instead. Kept so the drawing code reads as before.
+    static func drawRing(_ ctx: CGContext, finish: CharmFinish) {}
 
-    /// The short link between the ring and the top of the charm body.
+    /// Records where the charm's body starts, which is where the connector reaches down to.
     static func drawBail(_ ctx: CGContext, to top: CGFloat, finish: CharmFinish) {
-        let ringBottom: CGFloat = 0.86
-        guard top < ringBottom else { return }
-        ctx.saveGState()
-        ctx.setLineWidth(0.02)
-        ctx.setLineCap(.round)
-        ctx.setStrokeColor(finish.base.cg)
-        ctx.move(to: CGPoint(x: 0.5, y: ringBottom))
-        ctx.addLine(to: CGPoint(x: 0.5, y: top - 0.01))
-        ctx.strokePath()
-        ctx.restoreGState()
+        bodyTop = min(top, ringAnchorY - 0.04)
     }
 
     static func drawMedallion(_ ctx: CGContext, symbol: String?, rim: CharmFinish, face: CharmFinish, pixels: Int) {

@@ -58,6 +58,20 @@ public struct AppSettings: Equatable, Sendable, Codable {
     public var showPin = true
     /// A soft light along the cord, on any style.
     public var ropeGlow = false
+    /// Multiplier on the length of chain links and twists.
+    public var linkSize: Double = 1
+    public var beads: BeadDensity = .none
+    public var beadColor = RGBA(hex: 0xF3EEE6)
+    /// Bead diameter as a multiple of the cord's width.
+    public var beadSize: Double = 2.6
+
+    // MARK: Hook and grapple
+    public var hookStyle: HookStyle = .default
+    public var hookFinish: AttachmentFinish = .matchRope
+    public var hookSize: Double = 1
+    public var grappleStyle: GrappleStyle = .default
+    public var grappleFinish: AttachmentFinish = .silver
+    public var grappleSize: Double = 1
 
     // MARK: Light
     /// Use ``glowColor`` instead of a colour matched to the bottom charm.
@@ -83,7 +97,11 @@ public struct AppSettings: Equatable, Sendable, Codable {
 
     public init() {}
 
-    public static let ropeThicknessRange = 0.4...3.0
+    public static let ropeThicknessRange = 0.25...6.0
+    public static let linkSizeRange = 0.4...3.0
+    public static let beadSizeRange = 1.2...5.0
+    public static let hookSizeRange = 0.5...2.0
+    public static let grappleSizeRange = 0.5...2.5
     public static let glowIntensityRange = 0.1...1.0
     public static let glowSizeRange = 0.5...2.5
     public static let charmScaleRange = 0.5...1.6
@@ -176,7 +194,8 @@ public struct AppSettings: Equatable, Sendable, Codable {
              launchAtLogin, reduceMotion, favourites, recents,
              customRopeColors, ropePrimary, ropeSecondary, ropeThickness, ropePattern, showPin, ropeGlow,
              customGlowColor, glowColor, glowIntensity, glowSize, glowBreathing,
-             charmScales, charmShadow, swingWeight, settleSpeed, hangDrop
+             charmScales, charmShadow, swingWeight, settleSpeed, hangDrop,
+             linkSize, beads, beadColor, beadSize, hookStyle, hookFinish, hookSize, grappleStyle, grappleFinish, grappleSize
     }
 
     public init(from decoder: any Decoder) throws {
@@ -238,6 +257,18 @@ public struct AppSettings: Equatable, Sendable, Codable {
         swingWeight = number(.swingWeight, Self.swingWeightRange, d.swingWeight)
         settleSpeed = number(.settleSpeed, Self.settleSpeedRange, d.settleSpeed)
         hangDrop = number(.hangDrop, Self.hangDropRange, d.hangDrop)
+        linkSize = number(.linkSize, Self.linkSizeRange, d.linkSize)
+        beads = ((try? c.decodeIfPresent(BeadDensity.self, forKey: .beads)) ?? nil) ?? d.beads
+        beadColor = colour(.beadColor, d.beadColor)
+        beadSize = number(.beadSize, Self.beadSizeRange, d.beadSize)
+        hookStyle = ((try? c.decodeIfPresent(HookStyle.self, forKey: .hookStyle)) ?? nil) ?? d.hookStyle
+        hookFinish = ((try? c.decodeIfPresent(AttachmentFinish.self, forKey: .hookFinish)) ?? nil) ?? d.hookFinish
+        hookSize = number(.hookSize, Self.hookSizeRange, d.hookSize)
+        grappleStyle = ((try? c.decodeIfPresent(GrappleStyle.self, forKey: .grappleStyle)) ?? nil) ?? d.grappleStyle
+        grappleFinish = ((try? c.decodeIfPresent(AttachmentFinish.self, forKey: .grappleFinish)) ?? nil) ?? d.grappleFinish
+        grappleSize = number(.grappleSize, Self.grappleSizeRange, d.grappleSize)
+        // Older documents with the pin turned off meant "nothing at the top".
+        if !showPin, (try? c.decodeIfPresent(GrappleStyle.self, forKey: .grappleStyle)) == nil { grappleStyle = .none }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -280,6 +311,16 @@ public struct AppSettings: Equatable, Sendable, Codable {
         try c.encode(swingWeight, forKey: .swingWeight)
         try c.encode(settleSpeed, forKey: .settleSpeed)
         try c.encode(hangDrop, forKey: .hangDrop)
+        try c.encode(linkSize, forKey: .linkSize)
+        try c.encode(beads, forKey: .beads)
+        try c.encode(beadColor, forKey: .beadColor)
+        try c.encode(beadSize, forKey: .beadSize)
+        try c.encode(hookStyle, forKey: .hookStyle)
+        try c.encode(hookFinish, forKey: .hookFinish)
+        try c.encode(hookSize, forKey: .hookSize)
+        try c.encode(grappleStyle, forKey: .grappleStyle)
+        try c.encode(grappleFinish, forKey: .grappleFinish)
+        try c.encode(grappleSize, forKey: .grappleSize)
     }
 
     // MARK: - Persistence helpers

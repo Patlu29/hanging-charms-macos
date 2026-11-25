@@ -22,6 +22,7 @@ final class AppEnvironment {
     }
 
     func bootstrap() {
+        CharmArtwork.connector = Connector.from(store.settings)
         // Settings that name a charm this build or this Mac no longer has fall back.
         store.update { $0.prune(validIDs: library.validIDs) }
         // The user may have removed the login item while we were not running.

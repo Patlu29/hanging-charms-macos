@@ -125,3 +125,77 @@ import Testing
         #expect(abs(big.slots[0].radius / normal.slots[0].radius - 1.5) < 1e-9)
     }
 }
+
+@Suite struct AttachmentTests {
+    @Test func defaultsHaveNoJumpRing() {
+        let settings = AppSettings()
+        #expect(settings.hookStyle == .knot)
+        #expect(settings.hookStyle != .jumpRing)
+        #expect(settings.grappleStyle == .grapplingHook)
+        #expect(settings.beads == .none)
+    }
+
+    @Test func attachmentsRoundTrip() {
+        var settings = AppSettings()
+        settings.hookStyle = .lobsterClasp
+        settings.hookFinish = .roseGold
+        settings.hookSize = 1.6
+        settings.grappleStyle = .binderClip
+        settings.grappleFinish = .black
+        settings.grappleSize = 2
+        settings.beads = .many
+        settings.beadColor = RGBA(hex: 0x123456)
+        settings.beadSize = 4
+        settings.linkSize = 2.5
+        settings.ropeThickness = 5
+        #expect(AppSettings.decode(settings.encoded()) == settings)
+    }
+
+    @Test func unknownStylesFallBackAndSizesClamp() throws {
+        let json = #"{"hookStyle":"grapnel","grappleStyle":"rocket","hookFinish":"plutonium","beads":"loads","hookSize":40,"grappleSize":0,"beadSize":99,"linkSize":-1,"ropeThickness":0.01}"#
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        #expect(settings.hookStyle == .default)
+        #expect(settings.grappleStyle == .default)
+        #expect(settings.hookFinish == .matchRope)
+        #expect(settings.beads == .none)
+        #expect(settings.hookSize == AppSettings.hookSizeRange.upperBound)
+        #expect(settings.grappleSize == AppSettings.grappleSizeRange.lowerBound)
+        #expect(settings.beadSize == AppSettings.beadSizeRange.upperBound)
+        #expect(settings.linkSize == AppSettings.linkSizeRange.lowerBound)
+        #expect(settings.ropeThickness == AppSettings.ropeThicknessRange.lowerBound)
+    }
+
+    @Test func olderDocumentWithPinHiddenMeansNoGrapple() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"showPin":false}"#.utf8))
+        #expect(settings.grappleStyle == .none)
+        let explicit = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"showPin":false,"grappleStyle":"nail"}"#.utf8))
+        #expect(explicit.grappleStyle == .nail)
+    }
+
+    @Test func threadThicknessRangeIsWide() {
+        #expect(AppSettings.ropeThicknessRange.upperBound / AppSettings.ropeThicknessRange.lowerBound >= 20)
+    }
+
+    @Test func matchRopeFinishUsesTheRopeColours() {
+        var look = RopeStyle.thread.appearance
+        look.primary = RGBA(hex: 0xFF0000)
+        let palette = AttachmentFinish.matchRope.palette(rope: look)
+        #expect(palette.base == RGBA(hex: 0xFF0000))
+        #expect(palette.shadow == look.secondary)
+        #expect(AttachmentFinish.gold.palette(rope: look).base == CharmFinish.gold.base)
+    }
+
+    @Test func beadsAreEvenlySpacedInsideTheMargins() {
+        let positions = BeadLayout.positions(length: 300, spacing: 40, margin: 20)
+        #expect(!positions.isEmpty)
+        #expect(positions.first! >= 20 && positions.last! <= 280)
+        for (a, b) in zip(positions, positions.dropFirst()) { #expect(abs((b - a) - 40) < 1e-9) }
+        #expect(BeadLayout.positions(length: 30, spacing: 10, margin: 20).isEmpty)
+        #expect(BeadLayout.positions(length: 300, spacing: 0, margin: 20).isEmpty)
+    }
+
+    @Test func densityOrdersSpacing() {
+        #expect(BeadDensity.none.spacingFraction == nil)
+        #expect(BeadDensity.many.spacingFraction! < BeadDensity.few.spacingFraction!)
+    }
+}

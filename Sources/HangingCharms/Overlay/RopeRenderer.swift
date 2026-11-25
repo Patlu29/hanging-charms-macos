@@ -13,8 +13,18 @@ final class RopeRenderer {
     private let glow = CAGradientLayer()
     private let ropeBase = CAShapeLayer()
     private let ropeDetail = CAShapeLayer()
-    private let pin = CAShapeLayer()
+    private let grapple = CALayer()
+    private let beadLayer = CAShapeLayer()
+    private let beadShine = CAShapeLayer()
     private var charmLayers: [CALayer] = []
+    private var beadSpacing: CGFloat?
+    private var beadDiameter: CGFloat = 6
+    private var ropeWidth: CGFloat = 3
+
+    var charmLayerCount: Int { charmLayers.count }
+    var charmLayerSizes: [CGFloat] { charmLayers.map(\.bounds.width) }
+    var isGrappleShown: Bool { !grapple.isHidden && grapple.contents != nil }
+    var beadsDrawn: Bool { !beadLayer.isHidden && !(beadLayer.path?.boundingBox.isEmpty ?? true) }
 
     private var canvasHeight: CGFloat = 0
     private var scale: CGFloat = 2
@@ -30,11 +40,18 @@ final class RopeRenderer {
             layer.fillColor = nil
             layer.lineJoin = .round
         }
-        pin.lineWidth = 0
+        beadLayer.shadowColor = CGColor(gray: 0, alpha: 1)
+        beadLayer.shadowOpacity = 0.35
+        beadLayer.shadowRadius = 1.5
+        beadLayer.shadowOffset = CGSize(width: 0, height: -1)
+        beadShine.fillColor = CGColor(gray: 1, alpha: 0.55)
+        grapple.contentsGravity = .resizeAspect
         root.addSublayer(glow)
         root.addSublayer(ropeBase)
         root.addSublayer(ropeDetail)
-        root.addSublayer(pin)
+        root.addSublayer(beadLayer)
+        root.addSublayer(beadShine)
+        root.addSublayer(grapple)
     }
 
     func attach(to view: NSView) {
@@ -48,7 +65,7 @@ final class RopeRenderer {
         canvasHeight = height
         self.scale = scale
         root.contentsScale = scale
-        [glow, ropeBase, ropeDetail, pin].forEach { $0.contentsScale = scale }
+        [glow, ropeBase, ropeDetail, beadLayer, beadShine, grapple].forEach { $0.contentsScale = scale }
         charmLayers.forEach { $0.contentsScale = scale }
     }
 
@@ -56,9 +73,13 @@ final class RopeRenderer {
 
     // MARK: - Configuration
 
-    func configure(look: RopeAppearance, unit: Double, showPin: Bool = true, ropeGlow: Bool = false) {
+    /// - Parameter linkSize: Multiplier on chain links and twists along the cord.
+    func configure(look: RopeAppearance, unit: Double, ropeGlow: Bool = false, linkSize: Double = 1) {
         self.unit = unit
-        let width = max(1.0, unit * look.widthScale)
+        // Half a point is the thinnest line that still reads on a Retina display.
+        let width = max(0.5, unit * look.widthScale)
+        ropeWidth = width
+        let link = width * max(0.2, linkSize)
 
         ropeBase.strokeColor = look.primary.cg
         ropeBase.lineWidth = width
@@ -74,20 +95,20 @@ final class RopeRenderer {
             ropeDetail.strokeColor = look.secondary.cg
             ropeDetail.lineWidth = width * 0.5
             ropeDetail.lineCap = .butt
-            ropeDetail.lineDashPattern = [NSNumber(value: width * 0.9), NSNumber(value: width * 0.9)]
+            ropeDetail.lineDashPattern = [NSNumber(value: link * 0.9), NSNumber(value: link * 0.9)]
         case .braided:
             ropeDetail.strokeColor = look.secondary.cg
             ropeDetail.lineWidth = width * 0.7
             ropeDetail.lineCap = .round
-            ropeDetail.lineDashPattern = [NSNumber(value: width * 0.4), NSNumber(value: width * 0.9)]
+            ropeDetail.lineDashPattern = [NSNumber(value: link * 0.4), NSNumber(value: link * 0.9)]
         case .chain:
             ropeBase.lineCap = .round
-            ropeBase.lineDashPattern = [NSNumber(value: width * 1.5), NSNumber(value: width * 0.7)]
+            ropeBase.lineDashPattern = [NSNumber(value: link * 1.5), NSNumber(value: link * 0.7)]
             ropeDetail.strokeColor = look.secondary.cg
             ropeDetail.lineWidth = width * 0.42
             ropeDetail.lineCap = .round
-            ropeDetail.lineDashPattern = [NSNumber(value: width * 1.0), NSNumber(value: width * 1.2)]
-            ropeDetail.lineDashPhase = -width * 0.35
+            ropeDetail.lineDashPattern = [NSNumber(value: link * 1.0), NSNumber(value: link * 1.2)]
+            ropeDetail.lineDashPhase = -link * 0.35
         case .glowing:
             ropeBase.shadowColor = look.primary.cg
             ropeBase.shadowRadius = width * 3
@@ -117,15 +138,23 @@ final class RopeRenderer {
             ropeBase.shadowOpacity = 0.95
             ropeBase.shadowOffset = .zero
         }
-        pin.isHidden = !showPin
+    }
 
-        // The pin the rope hangs from.
-        let pinRadius = max(3, width * 1.3)
-        pin.path = CGPath(ellipseIn: CGRect(x: -pinRadius, y: -pinRadius, width: pinRadius * 2, height: pinRadius * 2), transform: nil)
-        pin.fillColor = look.secondary.cg
-        pin.shadowOpacity = 0.35
-        pin.shadowRadius = 2
-        pin.shadowOffset = CGSize(width: 0, height: -1)
+    /// What the rope hangs from. `eyeY` is where the rope ties on, from the image bottom.
+    func setGrapple(_ image: CGImage?, side: CGFloat, eyeY: CGFloat) {
+        grapple.isHidden = image == nil
+        grapple.contents = image
+        grapple.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        grapple.anchorPoint = CGPoint(x: 0.5, y: eyeY)
+    }
+
+    /// Beads along the cord above the top charm. `spacing` nil means no beads.
+    func setBeads(spacing: CGFloat?, color: RGBA, diameter: CGFloat) {
+        beadSpacing = spacing
+        beadDiameter = max(2, diameter)
+        beadLayer.fillColor = color.cg
+        beadLayer.isHidden = spacing == nil
+        beadShine.isHidden = spacing == nil
     }
 
     /// Sets the charm images, from the anchor down.
@@ -183,7 +212,8 @@ final class RopeRenderer {
         appendCatmullRom(points, to: path)
         ropeBase.path = path
         ropeDetail.path = path
-        pin.position = flip(rope.anchor)
+        grapple.position = flip(rope.anchor)
+        updateBeads(rope, flipped: points)
 
         for (slot, layer) in charmLayers.enumerated() where slot < rope.layout.slots.count {
             let direction = rope.charmDirection(slot: slot)
@@ -194,6 +224,37 @@ final class RopeRenderer {
             glow.position = flip(rope.charmCentre(slot: last))
         }
         CATransaction.commit()
+    }
+
+    /// Beads ride the cord from the grapple down to the first charm, where the charm's
+    /// own hook takes over. Their places are re-measured along the rope every frame, so
+    /// they move with it rather than being drawn on a still picture of it.
+    private func updateBeads(_ rope: RopeSimulation, flipped points: [CGPoint]) {
+        guard let spacing = beadSpacing, let firstCharm = rope.layout.slots.first?.node, firstCharm > 0 else {
+            beadLayer.path = nil
+            beadShine.path = nil
+            return
+        }
+        let cord = Array(points[0...min(firstCharm, points.count - 1)])
+        var lengths: [CGFloat] = [0]
+        for index in 1..<cord.count { lengths.append(lengths[index - 1] + hypot(cord[index].x - cord[index - 1].x, cord[index].y - cord[index - 1].y)) }
+        let total = lengths.last ?? 0
+        let radius = beadDiameter / 2
+        let places = BeadLayout.positions(length: Double(total), spacing: Double(spacing), margin: Double(radius * 3))
+        let beads = CGMutablePath(), shine = CGMutablePath()
+        var segment = 1
+        for place in places.map({ CGFloat($0) }) {
+            while segment < lengths.count - 1, lengths[segment] < place { segment += 1 }
+            let span = max(0.0001, lengths[segment] - lengths[segment - 1])
+            let t = (place - lengths[segment - 1]) / span
+            let a = cord[segment - 1], b = cord[segment]
+            let centre = CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+            beads.addEllipse(in: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+            let gloss = radius * 0.35
+            shine.addEllipse(in: CGRect(x: centre.x - radius * 0.45 - gloss / 2, y: centre.y + radius * 0.25 - gloss / 2, width: gloss, height: gloss))
+        }
+        beadLayer.path = beads
+        beadShine.path = shine
     }
 
     /// A smooth curve through every node (centripetal-free uniform Catmull-Rom).

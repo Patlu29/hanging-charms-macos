@@ -9,22 +9,20 @@ let package = Package(
         .library(name: "HangingCharmsCore", targets: ["HangingCharmsCore"]),
     ],
     targets: [
+        // Tools version 6.0 builds every target in Swift 6 language mode.
         // Pure logic: physics, models, settings, geometry, sound synthesis.
         // Imports Foundation and CoreGraphics only, so it is fully unit-testable.
         .target(
-            name: "HangingCharmsCore",
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            name: "HangingCharmsCore"
         ),
         // The macOS head: overlay panel, menu bar, Customize window, services.
         .executableTarget(
             name: "HangingCharms",
-            dependencies: ["HangingCharmsCore"],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            dependencies: ["HangingCharmsCore"]
         ),
         .testTarget(
             name: "HangingCharmsCoreTests",
-            dependencies: ["HangingCharmsCore"],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            dependencies: ["HangingCharmsCore"]
         ),
     ]
 )

@@ -72,6 +72,27 @@ public enum CharmArt: Equatable, Sendable {
     case medallion(symbol: String, finish: CharmFinish, face: CharmFinish)
     /// One of the hand-drawn shapes.
     case drawn(DrawnShape)
+    /// A coin with a letter or a sign set on its face.
+    case glyph(String, font: GlyphFont, finish: CharmFinish, face: CharmFinish)
+    /// A cut gemstone in a metal setting.
+    case gem(GemCut, color: RGBA, setting: CharmFinish)
+}
+
+/// The typeface a glyph charm is set in.
+public enum GlyphFont: String, Sendable {
+    /// A bold serif, for initials.
+    case serif
+    /// Apple's symbol font, for zodiac signs.
+    case symbols
+}
+
+/// How a gemstone is cut.
+public enum GemCut: String, Sendable, CaseIterable {
+    case round, oval, emerald, cushion, heart, pear, marquise
+    /// Polished smooth and domed, for opaque stones and pearls.
+    case cabochon
+    /// A cabochon showing a play of colour, for opal.
+    case opal
 }
 
 /// Charms that are drawn as vector paths rather than from a symbol.
@@ -121,8 +142,9 @@ public struct CharmDefinition: Identifiable, Equatable, Sendable {
             self.sound = sound
         } else {
             switch art {
-            case let .cutout(_, finish), let .medallion(_, finish, _): self.sound = finish.defaultSound
+            case let .cutout(_, finish), let .medallion(_, finish, _), let .glyph(_, _, finish, _): self.sound = finish.defaultSound
             case .drawn: self.sound = .metal
+            case .gem: self.sound = .glass
             }
         }
     }

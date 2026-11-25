@@ -90,6 +90,11 @@ enum CharmArtwork {
                 } else {
                     drawMedallion(ctx, symbol: nil, rim: finish, face: finish, pixels: pixels)
                 }
+            case let .glyph(text, font, finish, face):
+                drawMedallion(ctx, symbol: nil, rim: finish, face: face, pixels: pixels,
+                              mask: glyphMask(text, font: font, pixels: pixels), maskScale: 0.82)
+            case let .gem(cut, color, setting):
+                GemArtwork.draw(cut, color: color, setting: setting, in: ctx, pixels: pixels)
             case let .medallion(symbol, finish, face):
                 drawRing(ctx, finish: ringFinish(for: finish))
                 drawMedallion(ctx, symbol: symbol, rim: finish, face: face, pixels: pixels)
@@ -147,7 +152,8 @@ enum CharmArtwork {
         bodyTop = min(top, ringAnchorY - 0.04)
     }
 
-    static func drawMedallion(_ ctx: CGContext, symbol: String?, rim: CharmFinish, face: CharmFinish, pixels: Int) {
+    static func drawMedallion(_ ctx: CGContext, symbol: String?, rim: CharmFinish, face: CharmFinish, pixels: Int,
+                              mask glyph: CGImage? = nil, maskScale: CGFloat = 0.66) {
         let centre = CGPoint(x: 0.5, y: 0.45)
         let outer: CGFloat = 0.38, inner: CGFloat = 0.31
         drawBail(ctx, to: centre.y + outer, finish: ringFinish(for: rim))
@@ -167,8 +173,8 @@ enum CharmArtwork {
                        colors: [face.highlight, face.base, face.shadow])
         ctx.restoreGState()
         // Symbol, embossed in the rim's metal.
-        if let symbol, let mask = symbolMask(symbol, pixels: pixels) {
-            let box = disc(centre, inner * 0.66)
+        if let mask = glyph ?? symbol.flatMap({ symbolMask($0, pixels: pixels) }) {
+            let box = disc(centre, inner * maskScale)
             drawMetal(ctx, mask: mask, rect: fit(mask, in: box), finish: rim, depth: 0.6)
         }
         sheen(ctx, in: disc(centre, outer))
@@ -219,6 +225,39 @@ enum CharmArtwork {
         radialGradient(ctx, centre: CGPoint(x: rect.minX + rect.width * 0.32, y: rect.minY + rect.height * 0.74),
                        radius: rect.width * 0.5, colors: [RGBA(1, 1, 1, 0.45), RGBA(1, 1, 1, 0)])
         ctx.restoreGState()
+    }
+
+    // MARK: - Glyphs
+
+    private static var glyphCache: [String: CGImage] = [:]
+
+    /// A letter or sign as a black alpha mask, trimmed to its ink.
+    static func glyphMask(_ text: String, font kind: GlyphFont, pixels: Int) -> CGImage? {
+        let size = max(64, pixels)
+        let key = "\(text)#\(kind.rawValue)#\(size)"
+        if let cached = glyphCache[key] { return cached }
+        let pointSize = CGFloat(size) * 0.7
+        let font: NSFont
+        switch kind {
+        case .serif:
+            let base = NSFont.systemFont(ofSize: pointSize, weight: .heavy)
+            font = base.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: pointSize) } ?? base
+        case .symbols:
+            font = NSFont(name: "Apple Symbols", size: pointSize) ?? NSFont.systemFont(ofSize: pointSize, weight: .bold)
+        }
+        guard let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
+            .font: font, .foregroundColor: NSColor.black,
+        ]))
+        let bounds = CTLineGetImageBounds(line, ctx)
+        ctx.textPosition = CGPoint(x: (CGFloat(size) - bounds.width) / 2 - bounds.minX,
+                                   y: (CGFloat(size) - bounds.height) / 2 - bounds.minY)
+        CTLineDraw(line, ctx)
+        guard let drawn = ctx.makeImage(), let trimmed = AlphaTrim.trim(drawn) else { return nil }
+        glyphCache[key] = trimmed
+        return trimmed
     }
 
     // MARK: - Symbols

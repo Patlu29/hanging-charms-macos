@@ -19,6 +19,10 @@ enum DiagnosticRender {
             renderCustomize(page: CustomizePage(rawValue: arguments[flag + 1]) ?? .library, to: URL(fileURLWithPath: arguments[flag + 2]))
             return true
         }
+        if let flag = arguments.firstIndex(of: "--check-pages"), flag + 1 < arguments.count {
+            checkPages(into: URL(fileURLWithPath: arguments[flag + 1], isDirectory: true))
+            return true
+        }
         if let flag = arguments.firstIndex(of: "--render-hooks"), flag + 1 < arguments.count {
             renderHooks(to: URL(fileURLWithPath: arguments[flag + 1]))
             return true
@@ -226,8 +230,60 @@ enum DiagnosticRender {
         }
     }
 
+    /// Renders every Customize page and Appearance tab, and fails if any comes out blank.
+    /// A SwiftUI layout that cannot be resolved draws nothing at all and reports nothing,
+    /// which is how the Create page once shipped empty.
+    private static func checkPages(into folder: URL) {
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var blank: [String] = []
+        var targets: [(CustomizePage, AppearanceTab?)] = CustomizePage.allCases.filter { $0 != .appearance }.map { ($0, nil) }
+        targets += AppearanceTab.allCases.map { (.appearance, $0) }
+        for (page, tab) in targets {
+            let name = tab.map { "appearance-\($0.rawValue)" } ?? page.rawValue
+            if let tab { AppearanceView.startTab = tab }
+            let url = folder.appendingPathComponent("\(name).png")
+            guard let image = renderCustomize(page: page, to: url) else {
+                blank.append(name)
+                continue
+            }
+            let colours = distinctColours(in: image, from: 0.25)
+            print("\(colours > 40 ? "ok   " : "BLANK") \(name) (\(colours) colours)")
+            if colours <= 40 { blank.append(name) }
+        }
+        if !blank.isEmpty {
+            print("Blank pages: \(blank.joined(separator: ", "))")
+            exit(1)
+        }
+    }
+
+    /// Distinct colours in the image to the right of `from` (a fraction of the width),
+    /// which skips the sidebar so a blank page cannot pass on its labels.
+    private static func distinctColours(in image: CGImage, from: Double) -> Int {
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return 0 }
+        var seen = Set<UInt32>()
+        let start = Int(Double(width) * from)
+        for y in stride(from: 0, to: height, by: 3) {
+            for x in stride(from: start, to: width, by: 3) {
+                let i = (y * width + x) * 4
+                seen.insert(UInt32(pixels[i]) << 16 | UInt32(pixels[i + 1]) << 8 | UInt32(pixels[i + 2]))
+                if seen.count > 400 { return seen.count }
+            }
+        }
+        return seen.count
+    }
+
     /// A Customize page, drawn offscreen.
-    private static func renderCustomize(page: CustomizePage, to url: URL) {
+    @discardableResult
+    private static func renderCustomize(page: CustomizePage, to url: URL) -> CGImage? {
         let defaults = UserDefaults(suiteName: "HangingCharms.diagnostic")!
         defaults.removePersistentDomain(forName: "HangingCharms.diagnostic")
         let store = SettingsStore(defaults: defaults)
@@ -241,11 +297,24 @@ enum DiagnosticRender {
         window.contentView = hosting
         window.appearance = NSAppearance(named: .aqua)
         hosting.frame = NSRect(origin: .zero, size: size)
+        // On screen, as the real Customize window is: some pages (Create) do not draw
+        // at all in a window that has never been shown.
+        NSApplication.shared.setActivationPolicy(.accessory)
+        window.setFrameOrigin(NSPoint(x: 40, y: 40))
+        window.orderFrontRegardless()
         hosting.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
-        hosting.layoutSubtreeIfNeeded()
-        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return }
+        // Some pages lay out over a few run loop turns; give them time, twice.
+        for _ in 0..<3 {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+            hosting.layoutSubtreeIfNeeded()
+        }
+        if ProcessInfo.processInfo.environment["HC_DEBUG_RENDER"] != nil {
+            print("hosting bounds \(hosting.bounds), fitting \(hosting.fittingSize), window \(window.frame.size)")
+        }
+        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return nil }
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
         if let image = rep.cgImage { writePNG(image, to: url) }
+        window.orderOut(nil)
+        return rep.cgImage
     }
 }

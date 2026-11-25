@@ -18,10 +18,11 @@ struct CreateView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Make a charm from a picture")
                     .font(.title2.weight(.semibold))
+                // No .fixedSize here: forcing this paragraph to its full height left the
+                // whole Customize window blank on this page. It wraps without it.
                 Text("Drop a photo or picture here, or on the charm itself. The subject is cut out on this Mac with Apple's Vision framework; nothing is uploaded.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 dropZone
 

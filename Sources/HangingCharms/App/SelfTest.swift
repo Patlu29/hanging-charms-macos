@@ -43,6 +43,7 @@ final class SelfTest {
         }
         overlay = OverlayController(store: store, library: library, audio: AudioService())
         overlay.followsRealPointer = false
+        overlay.honoursSystemReduceMotion = false
     }
 
     // MARK: - Harness
@@ -83,7 +84,8 @@ final class SelfTest {
     // MARK: - The run
 
     private func run() {
-        print("Hanging Charms self-test")
+        let systemCalm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        print("Hanging Charms self-test (system Reduce Motion is \(systemCalm ? "on" : "off"))")
         overlay.start()
         pump(0.5)
 
@@ -351,6 +353,14 @@ final class SelfTest {
         store.update { $0.reduceMotion = true }
         pump(0.05)
         check("Reduce Motion calms the breeze", rope.breeze == 0)
+        store.update { $0.reduceMotion = false }
+        pump(0.05)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            overlay.honoursSystemReduceMotion = true
+            pump(0.05)
+            check("macOS Reduce Motion calms the breeze too", rope.breeze == 0)
+            overlay.honoursSystemReduceMotion = false
+        }
         store.update { $0.reduceMotion = false; $0.breeze = .still }
         pump(0.05)
     }

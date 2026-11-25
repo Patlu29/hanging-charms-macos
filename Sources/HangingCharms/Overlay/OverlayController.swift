@@ -132,7 +132,7 @@ final class OverlayController: NSObject {
         let configuration = makeConfiguration()
         let anchor = anchorPoint(on: target)
         resolved = settings.charmIDs.map(library.resolveOrDefault)
-        let reduce = settings.reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduce = settings.reduceMotion || systemWantsCalm
         rope = RopeSimulation(
             configuration: configuration, anchor: anchor, charms: charmMetrics(),
             charmSize: settings.charmSize, massScale: settings.ropeStyle.physics.charmMassScale,
@@ -345,7 +345,7 @@ final class OverlayController: NSObject {
 
     private func applyBreeze() {
         let settings = store.settings
-        let calm = settings.reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let calm = settings.reduceMotion || systemWantsCalm
         rope?.breeze = calm ? 0 : settings.breeze.strength
         if rope?.breeze ?? 0 > 0 { wake() }
     }
@@ -446,7 +446,18 @@ final class OverlayController: NSObject {
         followsRealPointer ? NSEvent.mouseLocation : (simulatedPointer ?? .zero)
     }
 
+    /// Whether macOS's own Reduce Motion is on, and honoured.
+    private var systemWantsCalm: Bool {
+        honoursSystemReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     // MARK: - Testing hooks
+
+    /// The self-test turns this off to exercise motion on machines (such as CI runners)
+    /// that have Reduce Motion on, then turns it back on to check it is honoured.
+    var honoursSystemReduceMotion = true {
+        didSet { applyBreeze() }
+    }
 
     /// False while the self-test drives the overlay, so the real cursor and the real
     /// front window cannot interfere.
@@ -495,7 +506,7 @@ final class OverlayController: NSObject {
         let now = ProcessInfo.processInfo.systemUptime
         defer { lastCursor = (now, point) }
         let settings = store.settings
-        guard settings.mouseReactive, !settings.reduceMotion, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        guard settings.mouseReactive, !settings.reduceMotion, !systemWantsCalm else { return }
         // With no recent sample there is no speed to knock with, but the brush still has
         // to learn where the pointer is: otherwise it remembers being inside a charm the
         // pointer has long left, and treats the next quick pass as the same one.

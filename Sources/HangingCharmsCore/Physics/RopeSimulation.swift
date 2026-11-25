@@ -32,6 +32,15 @@ public final class RopeSimulation {
     public var breeze: Double = 0 {
         didSet { if breeze > 0 { wake() } }
     }
+    /// The swing size to hold, in radians either side of straight down. Zero is off.
+    /// While it is on the rope never sleeps.
+    public var autoSwing: Double = 0 {
+        didSet { if autoSwing > 0 { wake() } }
+    }
+
+    /// The swing's current size, as the auto swing measures it. For tests and debugging.
+    public private(set) var swingAmplitude: Double = 0
+
     /// Simulated time, which drives the gusts.
     private var clock: Double = 0
     public private(set) var lastStepCount = 0
@@ -180,13 +189,49 @@ public final class RopeSimulation {
         let gravityStep = CGPoint(x: gust * timeStep * timeStep, y: configuration.gravity * timeStep * timeStep)
         let damping = configuration.damping
         let limit = configuration.maximumSpeed * timeStep
+        let drive = autoSwingDrive(timeStep: timeStep)
+        let last = Double(max(1, points.count - 1))
         for index in points.indices where index != dragIndex && points[index].inverseMass > 0 {
             var point = points[index]
             let carried = (point.displacement * damping).limited(to: limit)
             point.previousPosition = point.position
-            point.position += carried + gravityStep
+            // The drive scales with distance down the rope, so the whole cord swings
+            // together like a pendulum rather than being tugged at the end.
+            point.position += carried + gravityStep + drive * (Double(index) / last)
             points[index] = point
         }
+    }
+
+    /// The push that keeps an auto swing at its size, as a displacement for one step.
+    ///
+    /// It reads the swing's amplitude from its energy, then pushes along the direction of
+    /// travel when the swing is too small and against it when too big, so a throw or a
+    /// nudge settles back into the rhythm. It is gentle by design: the rope's own
+    /// damping is only a little smaller than the push, so the swing builds over a few
+    /// periods rather than snapping to size.
+    private func autoSwingDrive(timeStep: Double) -> CGPoint {
+        guard autoSwing > 0, dragIndex == nil, let end = points.indices.last, end > 0 else {
+            swingAmplitude = 0
+            return .zero
+        }
+        let reach = points[end].position - anchor
+        let length = reach.magnitude
+        guard length > 1 else { return .zero }
+        let angle = atan2(reach.x, reach.y)
+        let tangent = CGPoint(x: reach.y / length, y: -reach.x / length)
+        let angularSpeed = points[end].displacement.dot(tangent) / length / timeStep
+        swingAmplitude = Pendulum.amplitude(angle: angle, angularSpeed: angularSpeed, length: length,
+                                            gravity: configuration.gravity)
+        let error = autoSwing - swingAmplitude
+        // At rest there is no direction of travel yet: start it towards the right.
+        let direction: Double = abs(angularSpeed) < 0.02 ? 1 : (angularSpeed > 0 ? 1 : -1)
+        let gain = 0.9
+        let acceleration = configuration.gravity * gain * min(max(error, -0.3), 0.3) * direction
+        // While the swing is too small, also hand back what damping takes from it this
+        // step, so heavy, quick-settling ropes reach the same size as light ones.
+        let swingStep = points[end].displacement.dot(tangent)
+        let restore = error > 0 ? swingStep * (1 - configuration.damping) : 0
+        return tangent * (acceleration * timeStep * timeStep + restore)
     }
 
     private func driveDraggedPoint(timeStep: Double) {
@@ -199,7 +244,7 @@ public final class RopeSimulation {
     }
 
     private func updateSleepState() {
-        guard dragIndex == nil, breeze <= 0 else {
+        guard dragIndex == nil, breeze <= 0, autoSwing <= 0 else {
             stillFrames = 0
             return
         }
@@ -447,8 +492,11 @@ public final class RopeSimulation {
     /// pulling past the rope's length swings the charm rather than stretching it.
     public func reachableTarget(for location: CGPoint) -> CGPoint {
         let held = Double(dragIndex ?? (points.count - 1)) * configuration.segmentLength
+        // The full length of the rope, not 98% of it: anything shorter made a charm hop
+        // towards the anchor the moment it was picked up from where it hangs. The final
+        // projection pass keeps every link inside the ceiling whatever the target.
         let give = configuration.linkStiffness < 1 ? configuration.maxStretchRatio : 1
-        let reach = held * configuration.maximumReachRatio * give
+        let reach = held * give
         let offset = location - anchor
         let distance = offset.magnitude
         guard distance > reach, distance > .ulpOfOne else { return location }

@@ -71,6 +71,7 @@ public struct AppSettings: Equatable, Sendable, Codable {
     public var pinX: Double = 0.5
     public var pinY: Double = 0.25
     public var breeze: Breeze = .still
+    public var autoSwing: AutoSwing = .off
 
     // MARK: Hook and grapple
     public var hookStyle: HookStyle = .default
@@ -203,7 +204,7 @@ public struct AppSettings: Equatable, Sendable, Codable {
              customGlowColor, glowColor, glowIntensity, glowSize, glowBreathing,
              charmScales, charmShadow, swingWeight, settleSpeed, hangDrop,
              linkSize, beads, beadColor, beadSize, hookStyle, hookFinish, hookSize, grappleStyle, grappleFinish, grappleSize,
-             hangPoint, pinX, pinY, breeze
+             hangPoint, pinX, pinY, breeze, autoSwing
     }
 
     public init(from decoder: any Decoder) throws {
@@ -279,6 +280,7 @@ public struct AppSettings: Equatable, Sendable, Codable {
         pinX = number(.pinX, 0...1, d.pinX)
         pinY = number(.pinY, 0...0.9, d.pinY)
         breeze = ((try? c.decodeIfPresent(Breeze.self, forKey: .breeze)) ?? nil) ?? d.breeze
+        autoSwing = ((try? c.decodeIfPresent(AutoSwing.self, forKey: .autoSwing)) ?? nil) ?? d.autoSwing
         // Older documents with the pin turned off meant "nothing at the top".
         if !showPin, (try? c.decodeIfPresent(GrappleStyle.self, forKey: .grappleStyle)) == nil { grappleStyle = .none }
     }
@@ -337,6 +339,7 @@ public struct AppSettings: Equatable, Sendable, Codable {
         try c.encode(pinX, forKey: .pinX)
         try c.encode(pinY, forKey: .pinY)
         try c.encode(breeze, forKey: .breeze)
+        try c.encode(autoSwing, forKey: .autoSwing)
     }
 
     // MARK: - Persistence helpers

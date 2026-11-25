@@ -363,6 +363,30 @@ final class SelfTest {
         }
         store.update { $0.reduceMotion = false; $0.breeze = .still }
         pump(0.05)
+        autoSwingChecks()
+    }
+
+    private func autoSwingChecks() {
+        for _ in 0..<60 where !rope.isSleeping { pump(0.25) }
+        store.update { $0.autoSwing = .medium }
+        var widest = 0.0
+        var worst = 0.0
+        for _ in 0..<80 {
+            pump(0.1)
+            let reach = rope.charmRing(slot: 0) - rope.anchor
+            widest = max(widest, abs(atan2(reach.x, reach.y)))
+            worst = max(worst, rope.maximumStretch)
+        }
+        check("auto swing sets a resting charm swinging steadily", widest > AutoSwing.medium.amplitude * 0.6,
+              String(format: "%.2f rad of %.2f", widest, AutoSwing.medium.amplitude))
+        check("auto swing keeps the frame loop running", !overlay.isFrameLoopPaused && !rope.isSleeping)
+        check("auto swing stays inside the stretch ceiling", worst <= store.settings.ropeStyle.physics.maxStretchRatio + 0.002)
+        store.update { $0.reduceMotion = true }
+        pump(0.05)
+        check("Reduce Motion stops the auto swing", rope.autoSwing == 0)
+        store.update { $0.reduceMotion = false; $0.autoSwing = .off }
+        pump(0.05)
+        check("turning auto swing off leaves the drive off", rope.autoSwing == 0)
     }
 
     private func visibilityAndSleepChecks() {

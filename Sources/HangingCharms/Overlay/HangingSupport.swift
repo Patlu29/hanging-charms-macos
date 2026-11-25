@@ -42,6 +42,10 @@ enum HangingMenus {
             guard let raw = sender.representedObject as? String, let point = HangPoint(rawValue: raw) else { return }
             store.update { $0.hangPoint = point }
         }
+        @objc func swing(_ sender: NSMenuItem) {
+            guard let raw = sender.representedObject as? String, let swing = AutoSwing(rawValue: raw) else { return }
+            store.update { $0.autoSwing = swing }
+        }
         @objc func breeze(_ sender: NSMenuItem) {
             guard let raw = sender.representedObject as? String, let breeze = Breeze(rawValue: raw) else { return }
             store.update { $0.breeze = breeze }
@@ -67,6 +71,21 @@ enum HangingMenus {
             let entry = NSMenuItem(title: point.displayName, action: #selector(Target.hang(_:)), keyEquivalent: "")
             entry.representedObject = point.rawValue
             entry.state = store.settings.hangPoint == point ? .on : .off
+            entry.target = target
+            menu.addItem(entry)
+        }
+        item.submenu = menu
+        return item
+    }
+
+    static func autoSwing(store: SettingsStore) -> NSMenuItem {
+        let item = NSMenuItem(title: "Auto Swing", action: nil, keyEquivalent: "")
+        let menu = NSMenu()
+        let target = target(for: store)
+        for swing in AutoSwing.allCases {
+            let entry = NSMenuItem(title: swing.displayName, action: #selector(Target.swing(_:)), keyEquivalent: "")
+            entry.representedObject = swing.rawValue
+            entry.state = store.settings.autoSwing == swing ? .on : .off
             entry.target = target
             menu.addItem(entry)
         }

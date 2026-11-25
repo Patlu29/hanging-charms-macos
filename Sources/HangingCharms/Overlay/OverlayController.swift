@@ -90,7 +90,7 @@ final class OverlayController: NSObject {
             updateWindowTracking()
             placeAnchor()
         }
-        if new.breeze != old.breeze || new.reduceMotion != old.reduceMotion { applyBreeze() }
+        if new.breeze != old.breeze || new.autoSwing != old.autoSwing || new.reduceMotion != old.reduceMotion { applyBreeze() }
         if new.opacity != old.opacity { panel?.alphaValue = new.opacity }
         if new.level != old.level { panel?.setLevel(new.level) }
         if new.glow != old.glow || new.charmIDs != old.charmIDs || new.charmSize != old.charmSize
@@ -347,7 +347,8 @@ final class OverlayController: NSObject {
         let settings = store.settings
         let calm = settings.reduceMotion || systemWantsCalm
         rope?.breeze = calm ? 0 : settings.breeze.strength
-        if rope?.breeze ?? 0 > 0 { wake() }
+        rope?.autoSwing = calm ? 0 : settings.autoSwing.amplitude
+        if (rope?.breeze ?? 0) > 0 || (rope?.autoSwing ?? 0) > 0 { wake() }
     }
 
     private func refreshTimeProfile(force: Bool = false) {
@@ -395,7 +396,7 @@ final class OverlayController: NSObject {
         rope.step(deltaTime: now - previous)
         renderer.render(rope)
         // A breeze alone is a slow sway: sixty frames a second is plenty and costs half.
-        let relaxed = rope.breeze > 0 && !rope.isDragging && !isMovingAnchor
+        let relaxed = (rope.breeze > 0 || rope.autoSwing > 0) && !rope.isDragging && !isMovingAnchor
         if relaxed != isRelaxedRate {
             isRelaxedRate = relaxed
             link.preferredFrameRateRange = relaxed
@@ -611,6 +612,7 @@ final class OverlayController: NSObject {
         ropes.submenu = ropeMenu
         menu.addItem(ropes)
         menu.addItem(HangingMenus.hangFrom(store: store))
+        menu.addItem(HangingMenus.autoSwing(store: store))
         menu.addItem(HangingMenus.breeze(store: store))
         menu.addItem(.separator())
         menu.addItem(withTitle: "Hide Charm", action: #selector(menuHide), keyEquivalent: "").target = self
@@ -659,6 +661,8 @@ extension ResolvedCharm {
         case let .builtIn(definition):
             switch definition.art {
             case let .cutout(_, finish), let .medallion(_, finish, _): return finish.highlight
+            case let .glyph(_, _, _, face): return face.highlight
+            case let .gem(_, color, _): return RGBA(color.r + (1 - color.r) * 0.4, color.g + (1 - color.g) * 0.4, color.b + (1 - color.b) * 0.4)
             case let .drawn(shape):
                 switch shape {
                 case .evilEye, .planet: return RGBA(hex: 0x86CBFF)

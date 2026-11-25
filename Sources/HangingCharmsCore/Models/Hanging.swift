@@ -106,6 +106,48 @@ public extension OverlayPlacement {
     }
 }
 
+/// A steady pendulum swing the charm keeps up on its own.
+public enum AutoSwing: String, Codable, Sendable, CaseIterable, Identifiable {
+    case off, small, medium, large
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .off: "Off"
+        case .small: "Small"
+        case .medium: "Medium"
+        case .large: "Large"
+        }
+    }
+
+    /// How far out the swing goes either side of straight down, in radians.
+    public var amplitude: Double {
+        switch self {
+        case .off: 0
+        case .small: 0.16
+        case .medium: 0.3
+        case .large: 0.48
+        }
+    }
+}
+
+/// The pendulum maths behind ``AutoSwing``.
+public enum Pendulum {
+    /// The swing's amplitude from where the bob is and how fast it is moving: the angle
+    /// at which all of its energy would be potential.
+    /// - Parameters:
+    ///   - angle: From straight down, in radians.
+    ///   - angularSpeed: Radians per second.
+    ///   - length: Pendulum length, in points.
+    ///   - gravity: Points per second squared.
+    public static func amplitude(angle: Double, angularSpeed: Double, length: Double, gravity: Double) -> Double {
+        guard length > 0, gravity > 0 else { return abs(angle) }
+        let cosine = cos(angle) - (length * angularSpeed * angularSpeed) / (2 * gravity)
+        return acos(min(max(cosine, -1), 1))
+    }
+}
+
 /// The gusts behind ``Breeze``: a few incommensurate waves, so the sway never repeats
 /// in an obvious loop. Returns a multiplier in roughly -1...1.
 public enum Gust {

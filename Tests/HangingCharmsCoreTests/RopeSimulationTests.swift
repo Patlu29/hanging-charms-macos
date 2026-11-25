@@ -214,3 +214,31 @@ import Testing
         #expect(!rope.brush(at: centre, velocity: CGPoint(x: 3000, y: 0)))
     }
 }
+
+@Suite struct GrabTests {
+    @Test func theGrabbedSpotStaysUnderThePointerAsTheCharmTurns() {
+        let rope = RopeSimulation(configuration: RopeConfiguration.make(unit: 260, style: .leather),
+                                  anchor: CGPoint(x: 400, y: 0), startAngle: 0)
+        for _ in 0..<300 { rope.step(deltaTime: 1 / 60) }
+        // Grab off-centre, low on the charm, then swing it well out to the side.
+        let ring = rope.charmRing(slot: 0)
+        let grab = CGPoint(x: rope.charmCentre(slot: 0).x + 12, y: rope.charmCentre(slot: 0).y + 15)
+        #expect(rope.beginDrag(at: grab))
+        let along = (grab - ring).dot(rope.charmDirection(slot: 0))
+        var pointer = grab
+        for _ in 0..<40 {
+            pointer = CGPoint(x: pointer.x + 4, y: pointer.y - 3)
+            rope.updateDrag(to: pointer, velocity: CGPoint(x: 240, y: -180))
+            rope.step(deltaTime: 1 / 60)
+        }
+        for _ in 0..<30 { rope.step(deltaTime: 1 / 60) }
+        // Where the grabbed spot is now, in the charm's turned frame. At the grab the charm
+        // hung straight down, so "across" was (-1, 0).
+        let direction = rope.charmDirection(slot: 0)
+        let across = CGPoint(x: -direction.y, y: direction.x)
+        let acrossGrab = (grab - ring).dot(CGPoint(x: -1, y: 0))
+        let spot = rope.charmRing(slot: 0) + direction * along + across * acrossGrab
+        #expect(spot.distance(to: pointer) < 3, "spot is \(spot.distance(to: pointer)) pt from the pointer")
+        #expect(abs(rope.charmAngle(slot: 0)) > 0.2)
+    }
+}

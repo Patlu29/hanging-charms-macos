@@ -75,11 +75,15 @@ final class OverlayController: NSObject {
             || new.charmScales != old.charmScales || new.swingWeight != old.swingWeight || new.settleSpeed != old.settleSpeed {
             refreshTimeProfile(force: true)
             reconfigureRope()
-        } else if new.resolvedRopeAppearance != old.resolvedRopeAppearance || new.showPin != old.showPin || new.ropeGlow != old.ropeGlow {
+        } else if new.resolvedRopeAppearance != old.resolvedRopeAppearance || new.ropeGlow != old.ropeGlow
+            || new.linkSize != old.linkSize || new.beads != old.beads || new.beadColor != old.beadColor
+            || new.beadSize != old.beadSize || new.grappleStyle != old.grappleStyle
+            || new.grappleFinish != old.grappleFinish || new.grappleSize != old.grappleSize {
             configureRenderer()
+            if Connector.from(new) != Connector.from(old) { updateCharmImages() }
             if let rope { renderer.render(rope) }
         }
-        if new.charmShadow != old.charmShadow { updateCharmImages() }
+        if new.charmShadow != old.charmShadow || Connector.from(new) != Connector.from(old) { updateCharmImages() }
         if new.horizontalPosition != old.horizontalPosition || new.hangDrop != old.hangDrop { placeAnchor() }
         if new.opacity != old.opacity { panel?.alphaValue = new.opacity }
         if new.level != old.level { panel?.setLevel(new.level) }
@@ -183,11 +187,22 @@ final class OverlayController: NSObject {
 
     private func configureRenderer() {
         let settings = store.settings
-        renderer.configure(
-            look: settings.resolvedRopeAppearance,
-            unit: rope?.configuration.charmUnit ?? 260,
-            showPin: settings.showPin,
-            ropeGlow: settings.ropeGlow
+        let unit = rope?.configuration.charmUnit ?? 260
+        let look = settings.resolvedRopeAppearance
+        renderer.configure(look: look, unit: unit, ropeGlow: settings.ropeGlow, linkSize: settings.linkSize)
+
+        let side = CGFloat(unit * 0.12 * settings.grappleSize)
+        let palette = settings.grappleFinish.palette(rope: look)
+        let scale = screen?.backingScaleFactor ?? 2
+        let image = AttachmentArtwork.grappleImage(settings.grappleStyle, base: palette.base, highlight: palette.highlight,
+                                                   shadow: palette.shadow, pixels: Int(side * scale))
+        renderer.setGrapple(image, side: side, eyeY: AttachmentArtwork.eyeY(for: settings.grappleStyle))
+
+        let cordWidth = max(0.5, unit * look.widthScale)
+        renderer.setBeads(
+            spacing: settings.beads.spacingFraction.map { CGFloat(unit * $0) },
+            color: settings.beadColor,
+            diameter: CGFloat(cordWidth * settings.beadSize)
         )
     }
 
@@ -202,6 +217,7 @@ final class OverlayController: NSObject {
         let scale = screen?.backingScaleFactor ?? 2
         let diameters = rope.layout.slots.map { CGFloat($0.radius * 2) }
         let shadow = store.settings.charmShadow
+        CharmArtwork.connector = Connector.from(store.settings)
         let images = zip(resolved, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: scale, shadow: shadow) }
         renderer.setCharms(images, diameters: diameters)
     }
@@ -293,13 +309,50 @@ final class OverlayController: NSObject {
         return CGPoint(x: local.x, y: panel.frame.height - local.y)
     }
 
+    /// Physics point (y-down, canvas) to screen point (y-up, global).
+    func screenPoint(fromCanvas point: CGPoint) -> CGPoint? {
+        guard let panel else { return nil }
+        return CGPoint(x: panel.frame.minX + point.x, y: panel.frame.minY + panel.frame.height - point.y)
+    }
+
+    /// Where a mouse event happened, in canvas points. Uses the event's own location, so
+    /// a drag is measured where AppKit says it was, not wherever the cursor is by now.
+    private func canvasPoint(of event: NSEvent) -> CGPoint? {
+        guard let panel else { return nil }
+        if event.window === panel {
+            return CGPoint(x: event.locationInWindow.x, y: panel.frame.height - event.locationInWindow.y)
+        }
+        return canvasPoint(fromScreen: pointerLocation)
+    }
+
+    /// The pointer, in global screen points. The self-test replaces the real one.
+    private var pointerLocation: CGPoint {
+        followsRealPointer ? NSEvent.mouseLocation : (simulatedPointer ?? .zero)
+    }
+
+    // MARK: - Testing hooks
+
+    /// False while the self-test drives the overlay, so the real cursor cannot interfere.
+    var followsRealPointer = true
+    private var simulatedPointer: CGPoint?
+    var testRope: RopeSimulation? { rope }
+    var testPanel: OverlayPanel? { panel }
+    var testRenderer: RopeRenderer { renderer }
+    var isFrameLoopPaused: Bool { displayLink?.isPaused ?? true }
+
+    /// Moves the simulated pointer, as a mouse-moved event would.
+    func simulatePointer(atScreen point: CGPoint) {
+        simulatedPointer = point
+        pointerMoved()
+    }
+
     private func installMouseMonitors() {
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
-            MainActor.assumeIsolated { self?.pointerMoved() }
+            MainActor.assumeIsolated { if self?.followsRealPointer == true { self?.pointerMoved() } }
         }) { monitors.append(global) }
         if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.pointerMoved() }
+            MainActor.assumeIsolated { if self?.followsRealPointer == true { self?.pointerMoved() } }
             return event
         }) { monitors.append(local) }
     }
@@ -309,7 +362,7 @@ final class OverlayController: NSObject {
     @discardableResult
     private func updateHover() -> CGPoint? {
         guard let rope, let panel, panel.isVisible, !rope.isDragging,
-              let point = canvasPoint(fromScreen: NSEvent.mouseLocation) else { return nil }
+              let point = canvasPoint(fromScreen: pointerLocation) else { return nil }
         let over = rope.canGrab(at: point)
         if over != isPointerOverCharm {
             isPointerOverCharm = over
@@ -325,16 +378,20 @@ final class OverlayController: NSObject {
         let now = ProcessInfo.processInfo.systemUptime
         defer { lastCursor = (now, point) }
         let settings = store.settings
-        guard settings.mouseReactive, !settings.reduceMotion, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-              let last = lastCursor else { return }
-        let dt = now - last.time
-        guard dt > 0.001, dt < 0.2 else { return }
-        let velocity = (point - last.point) / dt
+        guard settings.mouseReactive, !settings.reduceMotion, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        // With no recent sample there is no speed to knock with, but the brush still has
+        // to learn where the pointer is: otherwise it remembers being inside a charm the
+        // pointer has long left, and treats the next quick pass as the same one.
+        var velocity = CGPoint.zero
+        if let last = lastCursor {
+            let dt = now - last.time
+            if dt > 0.001, dt < 0.2 { velocity = (point - last.point) / dt }
+        }
         if rope.brush(at: point, velocity: velocity) { wake() }
     }
 
     func mouseDown(_ event: NSEvent) {
-        guard let rope, let point = canvasPoint(fromScreen: NSEvent.mouseLocation) else { return }
+        guard let rope, let point = canvasPoint(of: event) else { return }
         // The charm swung away between the last hover check and this click: stop
         // holding the mouse so the next click reaches the app underneath.
         guard rope.canGrab(at: point) else {
@@ -355,7 +412,7 @@ final class OverlayController: NSObject {
     }
 
     func mouseDragged(_ event: NSEvent) {
-        guard let rope, rope.isDragging, let point = canvasPoint(fromScreen: NSEvent.mouseLocation) else { return }
+        guard let rope, rope.isDragging, let point = canvasPoint(of: event) else { return }
         dragSamples.append((event.timestamp, point))
         dragSamples.removeAll { event.timestamp - $0.time > 0.08 }
         var velocity = CGPoint.zero

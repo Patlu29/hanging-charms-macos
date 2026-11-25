@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 if MainActor.assumeIsolated({ DiagnosticRender.runIfRequested() }) { exit(0) }
+if MainActor.assumeIsolated({ SelfTest.runIfRequested() }) { exit(0) }
 
 let app = NSApplication.shared
 let delegate = AppDelegate()

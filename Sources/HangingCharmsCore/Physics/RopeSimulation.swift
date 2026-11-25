@@ -36,7 +36,15 @@ public final class RopeSimulation {
     private var dragIndex: Int?
     private var dragTarget: CGPoint = .zero
     private var dragVelocity: CGPoint = .zero
-    private var grabOffset: CGPoint = .zero
+    /// Where on the charm it was grabbed, in the charm's own frame: along its hanging
+    /// direction and across it. Kept in that frame, not the screen's, so the spot under
+    /// the pointer stays under the pointer as the charm turns with the rope.
+    private var grabAlong = 0.0
+    private var grabAcross = 0.0
+    private var dragSlot: Int?
+    /// The pointer, as last reported. The target is re-derived from it every step,
+    /// because the charm keeps turning between mouse events.
+    private var dragCursor: CGPoint = .zero
     private var contacts: Set<Int> = []
     private var brushContacts: Set<Int> = []
 
@@ -173,6 +181,7 @@ public final class RopeSimulation {
 
     private func driveDraggedPoint(timeStep: Double) {
         guard let dragIndex else { return }
+        if dragSlot != nil { dragTarget = reachableTarget(for: dragCursor - grabOffsetNow()) }
         let current = points[dragIndex].position
         let travel = configuration.maximumSpeed * timeStep
         points[dragIndex].position = current + (dragTarget - current).limited(to: travel)
@@ -347,6 +356,12 @@ public final class RopeSimulation {
     public func charmDirection(slot: Int) -> CGPoint {
         guard layout.slots.indices.contains(slot) else { return CGPoint(x: 0, y: 1) }
         let node = layout.slots[slot].node
+        // A held charm hangs along the pull towards the pointer, the same frame the drag
+        // is solved in, so what is drawn under the pointer is the spot that was grabbed.
+        if slot == dragSlot, node > 0 {
+            let pull = dragCursor - points[node - 1].position
+            if pull.magnitude > 1 { return pull.normalized }
+        }
         let above = points[max(0, node - 1)].position
         let below = node + 1 < points.count ? points[node + 1].position : points[node].position
         let direction = node + 1 < points.count ? (below - above) : (points[node].position - above)
@@ -395,7 +410,13 @@ public final class RopeSimulation {
         guard let slot = charmSlot(at: location) else { return false }
         let node = layout.slots[slot].node
         dragIndex = node
-        grabOffset = location - points[node].position
+        let offset = location - points[node].position
+        let direction = charmDirection(slot: slot)
+        let across = CGPoint(x: -direction.y, y: direction.x)
+        grabAlong = offset.dot(direction)
+        grabAcross = offset.dot(across)
+        dragSlot = slot
+        dragCursor = location
         dragTarget = points[node].position
         dragVelocity = .zero
         pendingImpacts.append(0.25)
@@ -406,7 +427,8 @@ public final class RopeSimulation {
     /// - Parameter velocity: Cursor velocity in points per second.
     public func updateDrag(to location: CGPoint, velocity: CGPoint) {
         guard dragIndex != nil else { return }
-        dragTarget = reachableTarget(for: location - grabOffset)
+        dragCursor = location
+        dragTarget = reachableTarget(for: location - grabOffsetNow())
         dragVelocity = velocity.limited(to: configuration.maximumSpeed)
         wake()
     }
@@ -423,7 +445,23 @@ public final class RopeSimulation {
         return anchor + (offset / distance) * reach
     }
 
+    /// The grab offset in screen terms for the way the charm hangs right now.
+    ///
+    /// The frame is taken from the rope node above the charm towards the pointer, not
+    /// from the charm's own last link: that link is the one the drag moves, so measuring
+    /// from it made the offset chase itself and the charm lag behind the pointer. Taken
+    /// this way the held charm lines up with the cord pulling on it, which is where a
+    /// real one hangs when held, and the grabbed spot sits under the pointer at once.
+    private func grabOffsetNow() -> CGPoint {
+        guard let dragSlot, let dragIndex, dragIndex > 0 else { return .zero }
+        let pull = dragCursor - points[dragIndex - 1].position
+        let direction = pull.magnitude > 1 ? pull.normalized : charmDirection(slot: dragSlot)
+        let across = CGPoint(x: -direction.y, y: direction.x)
+        return direction * grabAlong + across * grabAcross
+    }
+
     public func endDrag() {
+        dragSlot = nil
         dragIndex = nil
         dragVelocity = .zero
     }

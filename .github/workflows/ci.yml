@@ -16,6 +16,8 @@ jobs:
         run: swift --version
       - name: Test core
         run: swift test
+      - name: Overlay self-test
+        run: swift run HangingCharms --self-test
       - name: Render every charm
         run: swift run HangingCharms --render-catalogue catalogue.png
       - name: Build app bundle

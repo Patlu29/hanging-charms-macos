@@ -166,14 +166,20 @@ struct AppearanceView: View {
                 .foregroundStyle(.secondary)
         }
 
-        Section("Breeze") {
+        Section("Moving on its own") {
+            Picker("Auto swing", selection: binding(\.autoSwing)) {
+                ForEach(AutoSwing.allCases) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .help("A steady swing back and forth, like a clock pendulum. A push or a throw settles back into it.")
             Picker("Breeze", selection: binding(\.breeze)) {
                 ForEach(Breeze.allCases) { Text($0.displayName).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text(store.settings.breeze == .still
+            .help("Soft, uneven gusts that sway the charm.")
+            Text(store.settings.autoSwing == .off && store.settings.breeze == .still
                  ? "The charm moves only when something moves it, and costs nothing while it rests."
-                 : "The charm sways on its own. It never fully rests, so it uses a little more power.")
+                 : "The charm keeps moving on its own, so it never fully rests and uses a little more power. Reduce Motion stops it.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

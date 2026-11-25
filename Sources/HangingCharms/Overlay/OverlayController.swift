@@ -71,14 +71,22 @@ final class OverlayController: NSObject {
             return
         }
         if new.charmIDs != old.charmIDs || new.ropeStyle != old.ropeStyle || new.ropeLength != old.ropeLength
-            || new.charmSize != old.charmSize || new.elastic != old.elastic || new.timeOfDay != old.timeOfDay {
+            || new.charmSize != old.charmSize || new.elastic != old.elastic || new.timeOfDay != old.timeOfDay
+            || new.charmScales != old.charmScales || new.swingWeight != old.swingWeight || new.settleSpeed != old.settleSpeed {
             refreshTimeProfile(force: true)
             reconfigureRope()
+        } else if new.resolvedRopeAppearance != old.resolvedRopeAppearance || new.showPin != old.showPin || new.ropeGlow != old.ropeGlow {
+            configureRenderer()
+            if let rope { renderer.render(rope) }
         }
-        if new.horizontalPosition != old.horizontalPosition { placeAnchor() }
+        if new.charmShadow != old.charmShadow { updateCharmImages() }
+        if new.horizontalPosition != old.horizontalPosition || new.hangDrop != old.hangDrop { placeAnchor() }
         if new.opacity != old.opacity { panel?.alphaValue = new.opacity }
         if new.level != old.level { panel?.setLevel(new.level) }
-        if new.glow != old.glow || new.charmIDs != old.charmIDs || new.charmSize != old.charmSize { updateGlow() }
+        if new.glow != old.glow || new.charmIDs != old.charmIDs || new.charmSize != old.charmSize
+            || new.customGlowColor != old.customGlowColor || new.glowColor != old.glowColor
+            || new.glowIntensity != old.glowIntensity || new.glowSize != old.glowSize
+            || new.glowBreathing != old.glowBreathing || new.charmScales != old.charmScales { updateGlow() }
         if new.reduceMotion != old.reduceMotion, new.reduceMotion { rope?.reset(angle: 0); wake() }
         if new.hideInFullScreen != old.hideInFullScreen {
             new.hideInFullScreen ? fullScreen.start() : fullScreen.stop()
@@ -112,15 +120,16 @@ final class OverlayController: NSObject {
 
         refreshTimeProfile(force: true)
         let configuration = makeConfiguration()
-        let anchor = OverlayPlacement.anchor(screenFrame: frame, visibleFrame: target.visibleFrame, horizontal: settings.horizontalPosition)
+        let anchor = OverlayPlacement.anchor(screenFrame: frame, visibleFrame: target.visibleFrame,
+                                             horizontal: settings.horizontalPosition, drop: settings.hangDrop)
         resolved = settings.charmIDs.map(library.resolveOrDefault)
         let reduce = settings.reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         rope = RopeSimulation(
-            configuration: configuration, anchor: anchor, charms: resolved.map(\.metrics),
+            configuration: configuration, anchor: anchor, charms: charmMetrics(),
             charmSize: settings.charmSize, massScale: settings.ropeStyle.physics.charmMassScale,
             startAngle: reduce ? 0 : nil
         )
-        renderer.configure(style: settings.ropeStyle, unit: configuration.charmUnit)
+        configureRenderer()
         updateCharmImages()
         updateGlow()
 
@@ -142,7 +151,8 @@ final class OverlayController: NSObject {
         let unit = OverlayPlacement.unit(for: (screen ?? NSScreen.screens[0]).frame)
         return RopeConfiguration.make(
             unit: unit, ropeLength: settings.ropeLength, style: settings.ropeStyle,
-            profile: profile, elastic: settings.elastic
+            profile: profile, elastic: settings.elastic,
+            swingWeight: settings.swingWeight, settleSpeed: settings.settleSpeed
         )
     }
 
@@ -152,13 +162,33 @@ final class OverlayController: NSObject {
         resolved = settings.charmIDs.map(library.resolveOrDefault)
         let configuration = makeConfiguration()
         rope.reconfigure(
-            configuration: configuration, charms: resolved.map(\.metrics),
+            configuration: configuration, charms: charmMetrics(),
             charmSize: settings.charmSize, massScale: settings.ropeStyle.physics.charmMassScale
         )
-        renderer.configure(style: settings.ropeStyle, unit: configuration.charmUnit)
+        configureRenderer()
         updateCharmImages()
         updateGlow()
         wake()
+    }
+
+    /// Each charm's metrics with its own size from Library applied. A larger charm is
+    /// proportionally heavier, so it hangs and swings like a bigger piece of metal.
+    private func charmMetrics() -> [CharmMetrics] {
+        let settings = store.settings
+        return zip(settings.charmIDs, resolved).map { id, charm in
+            let scale = settings.scale(for: id)
+            return CharmMetrics(mass: charm.metrics.mass * scale, sizeScale: charm.metrics.sizeScale * scale)
+        }
+    }
+
+    private func configureRenderer() {
+        let settings = store.settings
+        renderer.configure(
+            look: settings.resolvedRopeAppearance,
+            unit: rope?.configuration.charmUnit ?? 260,
+            showPin: settings.showPin,
+            ropeGlow: settings.ropeGlow
+        )
     }
 
     /// Re-reads custom charms after the library changes.
@@ -171,18 +201,28 @@ final class OverlayController: NSObject {
         guard let rope else { return }
         let scale = screen?.backingScaleFactor ?? 2
         let diameters = rope.layout.slots.map { CGFloat($0.radius * 2) }
-        let images = zip(resolved, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: scale) }
+        let shadow = store.settings.charmShadow
+        let images = zip(resolved, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: scale, shadow: shadow) }
         renderer.setCharms(images, diameters: diameters)
     }
 
     private func updateGlow() {
         guard let rope, let last = resolved.last, let slot = rope.layout.slots.last else { return }
-        renderer.setGlow(enabled: store.settings.glow, color: last.glowColor, diameter: CGFloat(slot.radius * 2))
+        let settings = store.settings
+        renderer.setGlow(
+            enabled: settings.glow,
+            color: settings.customGlowColor ? settings.glowColor : last.glowColor,
+            diameter: CGFloat(slot.radius * 2),
+            intensity: settings.glowIntensity,
+            size: settings.glowSize,
+            breathing: settings.glowBreathing
+        )
     }
 
     private func placeAnchor() {
         guard let screen, let rope else { return }
-        rope.setAnchor(OverlayPlacement.anchor(screenFrame: screen.frame, visibleFrame: screen.visibleFrame, horizontal: store.settings.horizontalPosition))
+        rope.setAnchor(OverlayPlacement.anchor(screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
+                                               horizontal: store.settings.horizontalPosition, drop: store.settings.hangDrop))
         wake()
     }
 

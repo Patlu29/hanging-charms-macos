@@ -201,6 +201,18 @@ struct LibraryView: View {
                         }
                     }
                     .controlSize(.large)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Size on the rope").font(.caption.weight(.semibold))
+                            Spacer()
+                            Text(String(format: "%.0f%%", settings.scale(for: id) * 100))
+                                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: Binding(
+                            get: { model.store.settings.scale(for: id) },
+                            set: { value in model.store.update { $0.setScale(value, for: id) } }
+                        ), in: AppSettings.charmScaleRange)
+                    }
                     Text("Weight \(charm.metrics.mass, specifier: "%.1f") · Sounds like \(charm.sound.rawValue)")
                         .font(.caption)
                         .foregroundStyle(.tertiary)

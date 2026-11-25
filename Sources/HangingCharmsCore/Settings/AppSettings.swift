@@ -46,7 +46,73 @@ public struct AppSettings: Equatable, Sendable, Codable {
     public var favourites: [String] = []
     public var recents: [String] = []
 
+    // MARK: Chain and rope
+    /// Use ``ropePrimary`` and ``ropeSecondary`` instead of the style's own colours.
+    public var customRopeColors = false
+    public var ropePrimary = RopeStyle.default.appearance.primary
+    public var ropeSecondary = RopeStyle.default.appearance.secondary
+    /// Multiplier on the style's cord width.
+    public var ropeThickness: Double = 1
+    /// Nil draws the style's own pattern.
+    public var ropePattern: RopeAppearance.Pattern?
+    public var showPin = true
+    /// A soft light along the cord, on any style.
+    public var ropeGlow = false
+
+    // MARK: Light
+    /// Use ``glowColor`` instead of a colour matched to the bottom charm.
+    public var customGlowColor = false
+    public var glowColor = RGBA(hex: 0xFFE9B0)
+    public var glowIntensity: Double = 0.85
+    /// Multiplier on the glow's diameter.
+    public var glowSize: Double = 1
+    public var glowBreathing = true
+
+    // MARK: Charm images
+    /// Per-charm size multipliers, by charm ID, on top of ``charmSize``.
+    public var charmScales: [String: Double] = [:]
+    public var charmShadow = true
+
+    // MARK: Motion
+    /// Multiplier on gravity: above 1 the swing feels heavier and quicker.
+    public var swingWeight: Double = 1
+    /// Multiplier on energy loss: above 1 the charm settles sooner.
+    public var settleSpeed: Double = 1
+    /// Extra drop below the menu bar before the rope starts, in points.
+    public var hangDrop: Double = 0
+
     public init() {}
+
+    public static let ropeThicknessRange = 0.4...3.0
+    public static let glowIntensityRange = 0.1...1.0
+    public static let glowSizeRange = 0.5...2.5
+    public static let charmScaleRange = 0.5...1.6
+    public static let swingWeightRange = 0.5...1.6
+    public static let settleSpeedRange = 0.3...3.0
+    public static let hangDropRange = 0.0...400.0
+
+    /// The size multiplier for one charm on the rope.
+    public func scale(for charmID: String) -> Double {
+        charmScales[charmID] ?? 1
+    }
+
+    /// Sets one charm's size, dropping the entry when it is back to normal.
+    public mutating func setScale(_ value: Double, for charmID: String) {
+        let clamped = min(max(value, Self.charmScaleRange.lowerBound), Self.charmScaleRange.upperBound)
+        charmScales[charmID] = abs(clamped - 1) < 0.005 ? nil : clamped
+    }
+
+    /// The rope's look after the user's overrides are applied to the style.
+    public var resolvedRopeAppearance: RopeAppearance {
+        var look = ropeStyle.appearance
+        if customRopeColors {
+            look.primary = ropePrimary
+            look.secondary = ropeSecondary
+        }
+        if let ropePattern { look.pattern = ropePattern }
+        look.widthScale *= ropeThickness
+        return look
+    }
 
     public static let ropeLengthRange = 0.5...1.8
     public static let charmSizeRange = 0.5...1.6
@@ -99,6 +165,7 @@ public struct AppSettings: Equatable, Sendable, Codable {
         if charmIDs.isEmpty { charmIDs = [CharmCatalog.defaultID] }
         favourites = favourites.filter(validIDs.contains)
         recents = recents.filter(validIDs.contains)
+        charmScales = charmScales.filter { validIDs.contains($0.key) }
     }
 
     // MARK: - Codable
@@ -106,7 +173,10 @@ public struct AppSettings: Equatable, Sendable, Codable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, charmIDs, ropeStyle, ropeLength, charmSize, horizontalPosition, displayKey, opacity,
              level, isVisible, glow, sounds, volume, elastic, mouseReactive, timeOfDay, hideInFullScreen,
-             launchAtLogin, reduceMotion, favourites, recents
+             launchAtLogin, reduceMotion, favourites, recents,
+             customRopeColors, ropePrimary, ropeSecondary, ropeThickness, ropePattern, showPin, ropeGlow,
+             customGlowColor, glowColor, glowIntensity, glowSize, glowBreathing,
+             charmScales, charmShadow, swingWeight, settleSpeed, hangDrop
     }
 
     public init(from decoder: any Decoder) throws {
@@ -139,6 +209,35 @@ public struct AppSettings: Equatable, Sendable, Codable {
         reduceMotion = (try? c.decodeIfPresent(Bool.self, forKey: .reduceMotion)) ?? d.reduceMotion
         favourites = (try? c.decodeIfPresent([String].self, forKey: .favourites)) ?? d.favourites
         recents = Array(((try? c.decodeIfPresent([String].self, forKey: .recents)) ?? d.recents).prefix(Self.recentsLimit))
+
+        func flag(_ key: CodingKeys, _ fallback: Bool) -> Bool { ((try? c.decodeIfPresent(Bool.self, forKey: key)) ?? nil) ?? fallback }
+        func colour(_ key: CodingKeys, _ fallback: RGBA) -> RGBA {
+            guard let value = (try? c.decodeIfPresent(RGBA.self, forKey: key)) ?? nil else { return fallback }
+            let parts = [value.r, value.g, value.b, value.a]
+            guard parts.allSatisfy({ $0.isFinite }) else { return fallback }
+            return RGBA(min(max(value.r, 0), 1), min(max(value.g, 0), 1), min(max(value.b, 0), 1), min(max(value.a, 0), 1))
+        }
+        func number(_ key: CodingKeys, _ range: ClosedRange<Double>, _ fallback: Double) -> Double {
+            clamp((try? c.decodeIfPresent(Double.self, forKey: key)) ?? nil, range, fallback)
+        }
+        customRopeColors = flag(.customRopeColors, d.customRopeColors)
+        ropePrimary = colour(.ropePrimary, d.ropePrimary)
+        ropeSecondary = colour(.ropeSecondary, d.ropeSecondary)
+        ropeThickness = number(.ropeThickness, Self.ropeThicknessRange, d.ropeThickness)
+        ropePattern = (try? c.decodeIfPresent(RopeAppearance.Pattern.self, forKey: .ropePattern)) ?? nil
+        showPin = flag(.showPin, d.showPin)
+        ropeGlow = flag(.ropeGlow, d.ropeGlow)
+        customGlowColor = flag(.customGlowColor, d.customGlowColor)
+        glowColor = colour(.glowColor, d.glowColor)
+        glowIntensity = number(.glowIntensity, Self.glowIntensityRange, d.glowIntensity)
+        glowSize = number(.glowSize, Self.glowSizeRange, d.glowSize)
+        glowBreathing = flag(.glowBreathing, d.glowBreathing)
+        let scales = ((try? c.decodeIfPresent([String: Double].self, forKey: .charmScales)) ?? nil) ?? [:]
+        charmScales = scales.compactMapValues { $0.isFinite ? min(max($0, Self.charmScaleRange.lowerBound), Self.charmScaleRange.upperBound) : nil }
+        charmShadow = flag(.charmShadow, d.charmShadow)
+        swingWeight = number(.swingWeight, Self.swingWeightRange, d.swingWeight)
+        settleSpeed = number(.settleSpeed, Self.settleSpeedRange, d.settleSpeed)
+        hangDrop = number(.hangDrop, Self.hangDropRange, d.hangDrop)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -164,6 +263,23 @@ public struct AppSettings: Equatable, Sendable, Codable {
         try c.encode(reduceMotion, forKey: .reduceMotion)
         try c.encode(favourites, forKey: .favourites)
         try c.encode(recents, forKey: .recents)
+        try c.encode(customRopeColors, forKey: .customRopeColors)
+        try c.encode(ropePrimary, forKey: .ropePrimary)
+        try c.encode(ropeSecondary, forKey: .ropeSecondary)
+        try c.encode(ropeThickness, forKey: .ropeThickness)
+        try c.encodeIfPresent(ropePattern, forKey: .ropePattern)
+        try c.encode(showPin, forKey: .showPin)
+        try c.encode(ropeGlow, forKey: .ropeGlow)
+        try c.encode(customGlowColor, forKey: .customGlowColor)
+        try c.encode(glowColor, forKey: .glowColor)
+        try c.encode(glowIntensity, forKey: .glowIntensity)
+        try c.encode(glowSize, forKey: .glowSize)
+        try c.encode(glowBreathing, forKey: .glowBreathing)
+        try c.encode(charmScales, forKey: .charmScales)
+        try c.encode(charmShadow, forKey: .charmShadow)
+        try c.encode(swingWeight, forKey: .swingWeight)
+        try c.encode(settleSpeed, forKey: .settleSpeed)
+        try c.encode(hangDrop, forKey: .hangDrop)
     }
 
     // MARK: - Persistence helpers
@@ -189,12 +305,13 @@ public enum OverlayPlacement {
 
     /// The rope's anchor inside a window covering `screenFrame`, hanging just under
     /// the menu bar of `visibleFrame` (both in AppKit's y-up global coordinates).
-    public static func anchor(screenFrame: CGRect, visibleFrame: CGRect, horizontal: Double) -> CGPoint {
+    public static func anchor(screenFrame: CGRect, visibleFrame: CGRect, horizontal: Double, drop: Double = 0) -> CGPoint {
         let fraction = min(max(horizontal, 0), 1)
         let margin = min(80, screenFrame.width * 0.05)
         let x = (visibleFrame.minX - screenFrame.minX) + margin + (visibleFrame.width - 2 * margin) * fraction
         let topInset = max(0, screenFrame.maxY - visibleFrame.maxY)
-        return CGPoint(x: x, y: topInset)
+        let extra = min(max(drop, 0), max(0, visibleFrame.height * 0.5))
+        return CGPoint(x: x, y: topInset + extra)
     }
 
     /// The rope's base length for a screen, in points.

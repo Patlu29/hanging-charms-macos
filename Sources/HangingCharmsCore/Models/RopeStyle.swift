@@ -26,7 +26,21 @@ public struct RGBA: Equatable, Hashable, Sendable, Codable {
 
 /// How a cord is drawn.
 public struct RopeAppearance: Equatable, Sendable {
-    public enum Pattern: Sendable { case twisted, braided, chain, glowing, fine }
+    public enum Pattern: String, Sendable, Codable, CaseIterable, Identifiable {
+        case twisted, braided, chain, glowing, fine
+
+        public var id: String { rawValue }
+
+        public var displayName: String {
+            switch self {
+            case .twisted: "Twisted"
+            case .braided: "Braided"
+            case .chain: "Chain links"
+            case .glowing: "Lit filament"
+            case .fine: "Fine silk"
+            }
+        }
+    }
     public var pattern: Pattern
     public var primary: RGBA
     public var secondary: RGBA

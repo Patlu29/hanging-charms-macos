@@ -112,7 +112,7 @@ struct CustomizeView: View {
                 switch model.page {
                 case .library: LibraryView(model: model)
                 case .create: CreateView(model: model)
-                case .appearance: AppearanceView(store: model.store, audio: model.audio)
+                case .appearance: AppearanceView(store: model.store, library: model.library, audio: model.audio)
                 case .about: AboutView(library: model.library)
                 }
             }

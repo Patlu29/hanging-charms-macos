@@ -9,10 +9,13 @@ enum DiagnosticRender {
     static func runIfRequested() -> Bool {
         let arguments = CommandLine.arguments
         if let flag = arguments.firstIndex(of: "--render-scene"), flag + 1 < arguments.count {
-            renderScene(to: URL(fileURLWithPath: arguments[flag + 1]), style: arguments.dropFirst(flag + 2).first.flatMap(RopeStyle.init) ?? .goldChain)
+            renderScene(to: URL(fileURLWithPath: arguments[flag + 1]),
+                        style: arguments.dropFirst(flag + 2).first.flatMap(RopeStyle.init) ?? .goldChain,
+                        customised: arguments.contains("--customised"))
             return true
         }
         if let flag = arguments.firstIndex(of: "--render-customize"), flag + 2 < arguments.count {
+            if let tab = arguments.dropFirst(flag + 3).first.flatMap(AppearanceTab.init) { AppearanceView.startTab = tab }
             renderCustomize(page: CustomizePage(rawValue: arguments[flag + 1]) ?? .library, to: URL(fileURLWithPath: arguments[flag + 2]))
             return true
         }
@@ -87,22 +90,45 @@ enum DiagnosticRender {
     }
 
     /// Three charms mid-swing on a rope, through the real renderer.
-    private static func renderScene(to url: URL, style: RopeStyle) {
+    private static func renderScene(to url: URL, style: RopeStyle, customised: Bool) {
+        // A sample of the customisation options: thick red and white chain with a glow
+        // along it, a larger heart, no charm shadows and a wide teal glow.
+        var settings = AppSettings()
+        settings.ropeStyle = style
+        if customised {
+            settings.customRopeColors = true
+            settings.ropePrimary = RGBA(hex: 0xE0303A)
+            settings.ropeSecondary = RGBA(hex: 0xFFFFFF)
+            settings.ropePattern = .chain
+            settings.ropeThickness = 1.8
+            settings.ropeGlow = true
+            settings.charmShadow = false
+            settings.setScale(1.5, for: "heart")
+            settings.customGlowColor = true
+            settings.glowColor = RGBA(hex: 0x3FE0C8)
+            settings.glowSize = 1.6
+        }
         let size = CGSize(width: 700, height: 760)
         let library = CharmLibrary(directory: FileManager.default.temporaryDirectory.appendingPathComponent("hc-diag-\(UUID().uuidString)"))
         let charms = ["evil-eye", "clover", "heart"].compactMap { library.resolve($0) }
         let configuration = RopeConfiguration.make(unit: 300, style: style)
+        let metrics = charms.map { charm in
+            let scale = settings.scale(for: charm.id)
+            return CharmMetrics(mass: charm.metrics.mass * scale, sizeScale: charm.metrics.sizeScale * scale)
+        }
         let rope = RopeSimulation(configuration: configuration, anchor: CGPoint(x: size.width / 2, y: 10),
-                                  charms: charms.map(\.metrics), massScale: style.physics.charmMassScale, startAngle: 0.5)
+                                  charms: metrics, massScale: style.physics.charmMassScale, startAngle: 0.5)
         for _ in 0..<18 { rope.step(deltaTime: 1 / 60) }
 
         let renderer = RopeRenderer()
         renderer.root.frame = CGRect(origin: .zero, size: size)
         renderer.setCanvas(height: size.height, scale: 2)
-        renderer.configure(style: style, unit: configuration.charmUnit)
+        renderer.configure(look: settings.resolvedRopeAppearance, unit: configuration.charmUnit,
+                           showPin: settings.showPin, ropeGlow: settings.ropeGlow)
         let diameters = rope.layout.slots.map { CGFloat($0.radius * 2) }
-        renderer.setCharms(zip(charms, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: 2) }, diameters: diameters)
-        renderer.setGlow(enabled: true, color: charms.last!.glowColor, diameter: diameters.last!)
+        renderer.setCharms(zip(charms, diameters).map { CharmArtwork.image(for: $0, diameter: $1, scale: 2, shadow: settings.charmShadow) }, diameters: diameters)
+        renderer.setGlow(enabled: true, color: settings.customGlowColor ? settings.glowColor : charms.last!.glowColor,
+                         diameter: diameters.last!, intensity: settings.glowIntensity, size: settings.glowSize, breathing: false)
         renderer.render(rope)
 
         guard let ctx = CGContext(data: nil, width: Int(size.width * 2), height: Int(size.height * 2), bitsPerComponent: 8, bytesPerRow: 0,

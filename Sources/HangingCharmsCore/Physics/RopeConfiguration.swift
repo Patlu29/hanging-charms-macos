@@ -92,12 +92,17 @@ public struct RopeConfiguration: Equatable, Sendable {
         ropeLength: Double = 1,
         style: RopeStyle = .default,
         profile: RopeTimeProfile = .baseline,
-        elastic: Bool = false
+        elastic: Bool = false,
+        swingWeight: Double = 1,
+        settleSpeed: Double = 1
     ) -> RopeConfiguration {
         var configuration = RopeConfiguration.default
         configuration.charmUnit = max(40, unit)
         configuration.segmentLength = configuration.charmUnit * max(0.2, ropeLength) / Double(configuration.segmentCount)
         configuration = configuration.applying(style, at: profile)
+        // The user's own feel goes on last, scaling whatever the style and time decided.
+        configuration.gravity *= min(max(swingWeight, 0.2), 3)
+        configuration.damping = 1 - ((1 - configuration.damping) * min(max(settleSpeed, 0.1), 5))
         if elastic {
             configuration.maxStretchRatio = elasticCeiling
             configuration.linkStiffness = 0.18

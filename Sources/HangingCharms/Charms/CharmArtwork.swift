@@ -17,15 +17,19 @@ enum CharmArtwork {
     static let bodyBox = CGRect(x: 0.08, y: 0.04, width: 0.84, height: 0.80)
 
     private static var cache: [String: CGImage] = [:]
+    /// Whether the charm currently being drawn casts a drop shadow.
+    private static var drawsShadow = true
 
     static func clearCache() { cache.removeAll() }
 
     // MARK: - Entry points
 
-    static func image(for charm: ResolvedCharm, diameter: CGFloat, scale: CGFloat) -> CGImage? {
+    static func image(for charm: ResolvedCharm, diameter: CGFloat, scale: CGFloat, shadow: Bool = true) -> CGImage? {
         let pixels = Int((diameter * scale).rounded())
         guard pixels > 4 else { return nil }
-        let key = "\(charm.id)@\(pixels)"
+        let key = "\(charm.id)@\(pixels)\(shadow ? "" : "-flat")"
+        drawsShadow = shadow
+        defer { drawsShadow = true }
         if let cached = cache[key] { return cached }
         let image: CGImage?
         switch charm.source {
@@ -103,11 +107,13 @@ enum CharmArtwork {
 
     static func withCharmShadow(_ ctx: CGContext, d: CGFloat, _ body: () -> Void) {
         ctx.saveGState()
-        ctx.setShadow(
-            offset: CGSize(width: 0, height: -0.018 * d),
-            blur: 0.045 * d,
-            color: CGColor(gray: 0, alpha: 0.38)
-        )
+        if drawsShadow {
+            ctx.setShadow(
+                offset: CGSize(width: 0, height: -0.018 * d),
+                blur: 0.045 * d,
+                color: CGColor(gray: 0, alpha: 0.38)
+            )
+        }
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         body()
         ctx.endTransparencyLayer()

@@ -18,7 +18,6 @@ final class RopeRenderer {
 
     private var canvasHeight: CGFloat = 0
     private var scale: CGFloat = 2
-    private var style: RopeStyle = .default
     private var unit: CGFloat = 260
 
     init() {
@@ -57,11 +56,9 @@ final class RopeRenderer {
 
     // MARK: - Configuration
 
-    func configure(style: RopeStyle, unit: Double) {
-        self.style = style
+    func configure(look: RopeAppearance, unit: Double, showPin: Bool = true, ropeGlow: Bool = false) {
         self.unit = unit
-        let look = style.appearance
-        let width = max(1.2, unit * look.widthScale)
+        let width = max(1.0, unit * look.widthScale)
 
         ropeBase.strokeColor = look.primary.cg
         ropeBase.lineWidth = width
@@ -113,6 +110,14 @@ final class RopeRenderer {
             ropeBase.shadowRadius = 2
             ropeBase.shadowOffset = CGSize(width: 0, height: -1.5)
         }
+        // A light along the cord, on any pattern: the shadow becomes a coloured halo.
+        if ropeGlow, look.pattern != .glowing {
+            ropeBase.shadowColor = look.primary.cg
+            ropeBase.shadowRadius = max(4, width * 2.5)
+            ropeBase.shadowOpacity = 0.95
+            ropeBase.shadowOffset = .zero
+        }
+        pin.isHidden = !showPin
 
         // The pin the rope hangs from.
         let pinRadius = max(3, width * 1.3)
@@ -142,20 +147,23 @@ final class RopeRenderer {
         }
     }
 
-    func setGlow(enabled: Bool, color: RGBA, diameter: CGFloat) {
+    func setGlow(enabled: Bool, color: RGBA, diameter: CGFloat, intensity: Double = 0.85, size: Double = 1, breathing: Bool = true) {
         guard enabled else {
             glow.removeAllAnimations()
             glow.opacity = 0
             return
         }
-        glow.colors = [color.cg.copy(alpha: 0.55)!, color.cg.copy(alpha: 0.18)!, color.cg.copy(alpha: 0)!]
+        let strength = min(max(intensity, 0), 1)
+        glow.colors = [color.cg.copy(alpha: 0.65)!, color.cg.copy(alpha: 0.22)!, color.cg.copy(alpha: 0)!]
         glow.locations = [0, 0.45, 1]
-        glow.bounds = CGRect(x: 0, y: 0, width: diameter * 2.4, height: diameter * 2.4)
-        glow.opacity = 0.85
-        if glow.animation(forKey: "breathe") == nil {
+        let side = diameter * 2.4 * CGFloat(size)
+        glow.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        glow.opacity = Float(strength)
+        glow.removeAnimation(forKey: "breathe")
+        if breathing {
             let breathe = CABasicAnimation(keyPath: "opacity")
-            breathe.fromValue = 0.55
-            breathe.toValue = 0.95
+            breathe.fromValue = strength * 0.6
+            breathe.toValue = strength
             breathe.duration = 2.6
             breathe.autoreverses = true
             breathe.repeatCount = .infinity

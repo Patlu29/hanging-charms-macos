@@ -161,3 +161,56 @@ import Testing
         #expect(rope.points.allSatisfy { $0.position.x.isFinite && $0.position.y.isFinite })
     }
 }
+
+@Suite struct BrushTests {
+    private func settledRope() -> RopeSimulation {
+        let rope = RopeSimulation(configuration: RopeConfiguration.make(unit: 260, style: .leather),
+                                  anchor: CGPoint(x: 400, y: 0), startAngle: 0)
+        for _ in 0..<300 { rope.step(deltaTime: 1 / 60) }
+        return rope
+    }
+
+    @Test func reachingSlowlyForTheCharmDoesNotPushItAway() {
+        let rope = settledRope()
+        let centre = rope.charmCentre(slot: 0)
+        // A pointer approaching at an ordinary reaching speed, ending on the charm.
+        for step in 0..<20 {
+            let point = CGPoint(x: centre.x - 60 + Double(step) * 3, y: centre.y)
+            rope.brush(at: point, velocity: CGPoint(x: 300, y: 0))
+            rope.step(deltaTime: 1 / 60)
+        }
+        #expect(rope.charmCentre(slot: 0).distance(to: centre) < 1)
+        #expect(rope.canGrab(at: centre))
+        #expect(rope.beginDrag(at: centre))
+    }
+
+    @Test func aFlickKnocksTheCharmOncePerPass() {
+        let rope = settledRope()
+        let centre = rope.charmCentre(slot: 0)
+        let node = rope.layout.slots[0].node
+        #expect(rope.brush(at: centre, velocity: CGPoint(x: 1500, y: 0)))
+        let afterFirst = rope.points[node].displacement
+        // Still inside the charm: no second knock.
+        #expect(!rope.brush(at: CGPoint(x: centre.x + 2, y: centre.y), velocity: CGPoint(x: 1500, y: 0)))
+        #expect(rope.points[node].displacement == afterFirst)
+        // Out and back in: knocked again.
+        rope.brush(at: CGPoint(x: centre.x + 500, y: centre.y), velocity: CGPoint(x: 1500, y: 0))
+        #expect(rope.brush(at: centre, velocity: CGPoint(x: 1500, y: 0)))
+    }
+
+    @Test func brushingAddsToAnExistingSwingInsteadOfStoppingIt() {
+        let rope = settledRope()
+        let node = rope.layout.slots[0].node
+        rope.applyImpulse(CGPoint(x: 800, y: 0), at: node)
+        let before = rope.points[node].displacement.x
+        rope.brush(at: rope.charmCentre(slot: 0), velocity: CGPoint(x: 1000, y: 0))
+        #expect(rope.points[node].displacement.x > before)
+    }
+
+    @Test func noBrushWhileHolding() {
+        let rope = settledRope()
+        let centre = rope.charmCentre(slot: 0)
+        #expect(rope.beginDrag(at: centre))
+        #expect(!rope.brush(at: centre, velocity: CGPoint(x: 3000, y: 0)))
+    }
+}

@@ -38,6 +38,7 @@ public final class RopeSimulation {
     private var dragVelocity: CGPoint = .zero
     private var grabOffset: CGPoint = .zero
     private var contacts: Set<Int> = []
+    private var brushContacts: Set<Int> = []
 
     public init(
         configuration: RopeConfiguration = .default,
@@ -434,21 +435,46 @@ public final class RopeSimulation {
         wake()
     }
 
-    /// A cursor passing through the rope or a charm pushes it, for the mouse-reactive rope.
+    /// How fast the pointer must be moving to knock a charm, in points per second.
+    /// Slower than this is someone reaching for the charm to pick it up, and pushing it
+    /// away then is what makes a charm impossible to catch.
+    public static let flickSpeed = 650.0
+
+    /// A cursor passing through the rope or a charm nudges it, for the mouse-reactive rope.
+    ///
+    /// The nudge is added to the node's motion rather than replacing it, and a charm is
+    /// knocked once per pass through it, not on every mouse event while the pointer is
+    /// inside. Both matter: replacing the velocity on every event made a hovering pointer
+    /// fight the swing, and repeating the push made the charm flee the pointer.
     /// - Returns: Whether anything was touched.
     @discardableResult
     public func brush(at location: CGPoint, velocity: CGPoint, strength: Double = 0.35) -> Bool {
-        guard dragIndex == nil, velocity.magnitude > 30 else { return false }
+        guard dragIndex == nil else {
+            brushContacts = []
+            return false
+        }
+        let speed = velocity.magnitude
+        let dt = configuration.fixedTimeStep
         var touched = false
-        let push = velocity.limited(to: 1800) * strength
-        for slot in layout.slots.indices where charmCentre(slot: slot).distance(to: location) < layout.slots[slot].radius {
+        var inside: Set<Int> = []
+        var charmNodes: Set<Int> = []
+        for slot in layout.slots.indices {
+            charmNodes.insert(layout.slots[slot].node)
+            guard charmCentre(slot: slot).distance(to: location) < layout.slots[slot].radius else { continue }
+            inside.insert(slot)
+            guard !brushContacts.contains(slot), speed > Self.flickSpeed else { continue }
             let node = layout.slots[slot].node
-            points[node].previousPosition = points[node].position - push * configuration.fixedTimeStep
+            points[node].previousPosition -= velocity.limited(to: 1800) * strength * dt
             touched = true
         }
-        for index in points.indices.dropFirst() where points[index].position.distance(to: location) < 10 {
-            points[index].previousPosition = points[index].position - push * configuration.fixedTimeStep
-            touched = true
+        brushContacts = inside
+        if speed > 120 {
+            let nudge = velocity.limited(to: 1200) * (strength * 0.4) * dt
+            for index in points.indices.dropFirst() where !charmNodes.contains(index)
+                && points[index].position.distance(to: location) < 8 {
+                points[index].previousPosition -= nudge
+                touched = true
+            }
         }
         if touched { wake() }
         return touched

@@ -13,6 +13,10 @@ final class OverlayPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         ignoresMouseEvents = true
+        // While the panel holds the mouse (pointer over a charm), mouse-moved events go
+        // to this window, not to other apps, so it must accept them; otherwise hover
+        // tracking stops the moment the pointer reaches a charm.
+        acceptsMouseMovedEvents = true
         isMovable = false
         hidesOnDeactivate = false
         isReleasedWhenClosed = false

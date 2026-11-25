@@ -270,6 +270,10 @@ final class OverlayController: NSObject {
         guard let previous = lastTimestamp else { return }
         rope.step(deltaTime: now - previous)
         renderer.render(rope)
+        // The charm moves under a still pointer too, so hover is re-checked every frame:
+        // a swinging charm can then be caught, and a click where it used to be goes
+        // through to the app underneath.
+        updateHover()
 
         for impact in rope.drainImpacts() {
             audio.play(resolved.last?.sound ?? .metal, intensity: impact)
@@ -300,15 +304,23 @@ final class OverlayController: NSObject {
         }) { monitors.append(local) }
     }
 
-    private func pointerMoved() {
+    /// Lets the panel take the mouse only while the pointer is over a charm.
+    /// - Returns: The pointer in canvas points, when there is a panel to measure against.
+    @discardableResult
+    private func updateHover() -> CGPoint? {
         guard let rope, let panel, panel.isVisible, !rope.isDragging,
-              let point = canvasPoint(fromScreen: NSEvent.mouseLocation) else { return }
+              let point = canvasPoint(fromScreen: NSEvent.mouseLocation) else { return nil }
         let over = rope.canGrab(at: point)
         if over != isPointerOverCharm {
             isPointerOverCharm = over
             panel.ignoresMouseEvents = !over
             (over ? NSCursor.openHand : NSCursor.arrow).set()
         }
+        return point
+    }
+
+    private func pointerMoved() {
+        guard let rope, let point = updateHover() else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
         defer { lastCursor = (now, point) }
@@ -323,6 +335,14 @@ final class OverlayController: NSObject {
 
     func mouseDown(_ event: NSEvent) {
         guard let rope, let point = canvasPoint(fromScreen: NSEvent.mouseLocation) else { return }
+        // The charm swung away between the last hover check and this click: stop
+        // holding the mouse so the next click reaches the app underneath.
+        guard rope.canGrab(at: point) else {
+            isPointerOverCharm = false
+            panel?.ignoresMouseEvents = true
+            NSCursor.arrow.set()
+            return
+        }
         if event.clickCount == 2, rope.canGrab(at: point) {
             openCustomize?(.library)
             return

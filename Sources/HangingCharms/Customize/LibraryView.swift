@@ -83,20 +83,59 @@ struct LibraryView: View {
             TextField("Search charms", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(LibraryFilter.everything) { item in
-                        Button(item.title) { filter = item }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(filter == item ? Color.accentColor : Color.secondary.opacity(0.12)))
-                            .foregroundStyle(filter == item ? Color.white : Color.primary)
-                    }
+            HStack(spacing: 6) {
+                ForEach([LibraryFilter.all, .favourites, .recents, .mine]) { item in
+                    chip(item.title, selected: filter == item) { filter = item }
                 }
+                // Sixteen collections are too many for a row of chips, so they live in
+                // a menu; the chosen one shows as the active chip.
+                Menu {
+                    ForEach(CharmCollection.allCases) { collection in
+                        Button {
+                            filter = .collection(collection)
+                        } label: {
+                            Text("\(collection.displayName)  (\(CharmCatalog.charms(in: collection).count))")
+                        }
+                    }
+                } label: {
+                    Text(selectedCollection?.displayName ?? "Collections")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(selectedCollection != nil ? Color.accentColor.opacity(0.85) : Color.secondary.opacity(0.12)))
+                .foregroundStyle(selectedCollection != nil ? Color.white : Color.primary)
+                Spacer(minLength: 0)
             }
         }
         .padding(14)
+    }
+
+    private var selectedCollection: CharmCollection? {
+        if case let .collection(collection) = filter { return collection }
+        return nil
+    }
+
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(selected ? Color.accentColor : Color.secondary.opacity(0.12)))
+            .foregroundStyle(selected ? Color.white : Color.primary)
+    }
+
+    /// "All" with no search groups the Library under collection headings.
+    private var groupedSections: [(title: String, ids: [String])]? {
+        guard filter == .all, query.isEmpty else { return nil }
+        var sections: [(String, [String])] = []
+        let mine = model.library.customCharms.map(\.charmID)
+        if !mine.isEmpty { sections.append(("My Charms", mine)) }
+        for collection in CharmCollection.allCases {
+            sections.append((collection.displayName, CharmCatalog.charms(in: collection).map(\.id)))
+        }
+        return sections
     }
 
     // MARK: - Grid
@@ -111,10 +150,30 @@ struct LibraryView: View {
                 )
                 .padding(.top, 60)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10) {
-                    ForEach(visibleIDs, id: \.self) { id in
-                        if let charm = model.library.resolve(id) {
-                            tile(charm)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10,
+                          pinnedViews: [.sectionHeaders]) {
+                    if let sections = groupedSections {
+                        ForEach(sections, id: \.title) { section in
+                            Section {
+                                ForEach(section.ids, id: \.self) { id in
+                                    if let charm = model.library.resolve(id) { tile(charm) }
+                                }
+                            } header: {
+                                HStack {
+                                    Text(section.title).font(.headline)
+                                    Text("\(section.ids.count)").font(.caption).foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 2)
+                                .background(.bar)
+                            }
+                        }
+                    } else {
+                        ForEach(visibleIDs, id: \.self) { id in
+                            if let charm = model.library.resolve(id) {
+                                tile(charm)
+                            }
                         }
                     }
                 }

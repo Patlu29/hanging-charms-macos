@@ -78,7 +78,11 @@ enum DiagnosticRender {
             CGImageDestinationAddImage(destination, image, nil)
             CGImageDestinationFinalize(destination)
         }
-        print("Rendered \(charms.count - failures.count) of \(charms.count) charms to \(url.path)")
+        print("Rendered \(charms.count - failures.count) of \(charms.count) charms in \(CharmCollection.allCases.count) collections to \(url.path)")
+        if !CharmArtwork.missingSymbols.isEmpty {
+            print("Missing SF Symbols on this Mac: \(CharmArtwork.missingSymbols.sorted().joined(separator: ", "))")
+            exit(1)
+        }
         if !failures.isEmpty {
             print("Failed: \(failures.joined(separator: ", "))")
             exit(1)

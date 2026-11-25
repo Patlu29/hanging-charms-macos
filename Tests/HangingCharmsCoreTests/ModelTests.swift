@@ -186,3 +186,60 @@ import Testing
         #expect(SoundSynthesizer.render(material: .bell, intensity: 0).allSatisfy { $0 == 0 })
     }
 }
+
+@Suite struct LibraryGrowthTests {
+    @Test func libraryHasSixteenCollectionsAndOverOneHundredFiftyCharms() {
+        #expect(CharmCollection.allCases.count == 16)
+        #expect(CharmCatalog.all.count >= 150)
+    }
+
+    @Test func everyCollectionHasAtLeastSixCharms() {
+        for collection in CharmCollection.allCases {
+            #expect(CharmCatalog.charms(in: collection).count >= 6, "\(collection) is thin")
+        }
+    }
+
+    @Test func zodiacHasTwelveSignsInOrder() {
+        let signs = CharmCatalog.charms(in: .zodiac)
+        #expect(signs.count == 12)
+        #expect(signs.first?.name == "Aries" && signs.last?.name == "Pisces")
+        for sign in signs {
+            guard case let .glyph(text, font, _, _) = sign.art else {
+                Issue.record("\(sign.id) is not a glyph")
+                continue
+            }
+            #expect(font == .symbols)
+            #expect(text.unicodeScalars.last == "\u{FE0E}", "\(sign.id) could render as an emoji")
+        }
+    }
+
+    @Test func birthstonesCoverEveryMonthOnce() {
+        let stones = CharmCatalog.charms(in: .birthstones)
+        let months = DateFormatter().monthSymbols!
+        #expect(stones.count == 12)
+        for month in months {
+            #expect(stones.filter { $0.blurb.contains(month) }.count == 1, "\(month)")
+        }
+        #expect(stones.allSatisfy { if case .gem = $0.art { true } else { false } })
+    }
+
+    @Test func initialsRunAToZ() {
+        let letters = CharmCatalog.charms(in: .initials)
+        #expect(letters.map { $0.name.last! } == Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+    }
+
+    @Test func searchFindsTheNewCharms() {
+        #expect(CharmCatalog.search("aries").map(\.id) == ["zodiac-aries"])
+        #expect(CharmCatalog.search("March").contains { $0.id == "stone-march" })
+        #expect(CharmCatalog.search("letter k").contains { $0.id == "letter-k" })
+        #expect(CharmCatalog.search("initials").count == 26)
+        #expect(CharmCatalog.search("weather").count == CharmCatalog.charms(in: .weather).count)
+    }
+
+    @Test func gemsAndGlyphsGetSensibleSounds() {
+        for charm in CharmCatalog.charms(in: .birthstones) {
+            #expect(charm.sound == .glass || charm.sound == .ceramic)
+        }
+        #expect(CharmCatalog.charm(id: "letter-a")?.sound == .metal)
+    }
+}

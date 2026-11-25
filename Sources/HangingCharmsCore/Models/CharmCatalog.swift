@@ -103,6 +103,7 @@ public enum DrawnShape: String, Sendable, CaseIterable {
 /// A group of charms in the Library.
 public enum CharmCollection: String, CaseIterable, Codable, Sendable, Identifiable {
     case protection, luck, celestial, nature, love, spirit, classics, animals
+    case zodiac, birthstones, celebration, food, travel, sports, weather, initials
 
     public var id: String { rawValue }
 
@@ -116,6 +117,14 @@ public enum CharmCollection: String, CaseIterable, Codable, Sendable, Identifiab
         case .spirit: "Spirit"
         case .classics: "Classics"
         case .animals: "Animals"
+        case .zodiac: "Zodiac"
+        case .birthstones: "Birthstones"
+        case .celebration: "Celebration"
+        case .food: "Food and Drink"
+        case .travel: "Travel"
+        case .sports: "Sports and Hobbies"
+        case .weather: "Weather"
+        case .initials: "Initials"
         }
     }
 }
@@ -152,7 +161,11 @@ public struct CharmDefinition: Identifiable, Equatable, Sendable {
 
 /// The built-in Library.
 public enum CharmCatalog {
-    public static let all: [CharmDefinition] = [
+    /// Every built-in charm: the first collections, then the ones added in 1.2.
+    public static let all: [CharmDefinition] = original + zodiac + birthstones + celebration + food + travel
+        + sports + weather + moreAnimals + moreLoveAndSpirit + initials
+
+    static let original: [CharmDefinition] = [
         // Protection
         CharmDefinition("evil-eye", "Evil Eye", .protection, .drawn(.evilEye), mass: 3.6, size: 0.95, sound: .glass, blurb: "Glass nazar in layered blue, said to turn away a jealous glance."),
         CharmDefinition("hamsa", "Open Hand", .protection, .cutout(symbol: "hand.raised.fill", finish: .silver), mass: 4.2, size: 1.05, blurb: "An open palm raised in protection."),

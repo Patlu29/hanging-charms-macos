@@ -46,7 +46,9 @@ enum CharmArtwork {
         case let .custom(picture): image = render(picture: picture, pixels: pixels)
         }
         if let image {
-            if cache.count > 160 { cache.removeAll() }
+            // Room for every Library thumbnail plus the rope and previews, so scrolling the
+            // Library never clears the cache it is drawing from.
+            if cache.count > 420 { cache.removeAll() }
             cache[key] = image
         }
         return image
@@ -92,7 +94,7 @@ enum CharmArtwork {
                 }
             case let .glyph(text, font, finish, face):
                 drawMedallion(ctx, symbol: nil, rim: finish, face: face, pixels: pixels,
-                              mask: glyphMask(text, font: font, pixels: pixels), maskScale: 0.82)
+                              mask: glyphMask(text, font: font, pixels: pixels), maskScale: font == .serif ? 0.6 : 0.74)
             case let .gem(cut, color, setting):
                 GemArtwork.draw(cut, color: color, setting: setting, in: ctx, pixels: pixels)
             case let .medallion(symbol, finish, face):
@@ -263,6 +265,8 @@ enum CharmArtwork {
     // MARK: - Symbols
 
     private static var symbolCache: [String: CGImage] = [:]
+    /// Symbol names this Mac does not have. The catalogue render fails if any appear.
+    static private(set) var missingSymbols: Set<String> = []
 
     /// The symbol as a black alpha mask, rendered large and trimmed to its ink.
     static func symbolMask(_ name: String, pixels: Int) -> CGImage? {
@@ -271,7 +275,10 @@ enum CharmArtwork {
         if let cached = symbolCache[key] { return cached }
         let configuration = NSImage.SymbolConfiguration(pointSize: CGFloat(size), weight: .bold)
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration) else { return nil }
+            .withSymbolConfiguration(configuration) else {
+            missingSymbols.insert(name)
+            return nil
+        }
         var proposed = CGRect(origin: .zero, size: symbol.size)
         guard let cg = symbol.cgImage(forProposedRect: &proposed, context: nil, hints: nil) else { return nil }
         let trimmed = AlphaTrim.trim(cg) ?? cg

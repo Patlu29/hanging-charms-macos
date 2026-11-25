@@ -22,15 +22,14 @@
   colour and size.
 
 ### Customisation
-- **Chain and cord:** your own main and detail colours, thickness from 40% to 300%, a
-  pattern of your choice (twisted, braided, chain links, lit filament or fine silk) on
-  any rope, and the pin on or off.
+- **Chain and cord:** your own main and detail colours, and a pattern of your choice
+  (twisted, braided, chain links, lit filament or fine silk) on any rope.
 - **Light:** glow colour matched to the charm or one you pick, brightness, size, slow
   breathing on or off, and a glow along the cord on any rope.
 - **Charm size:** each charm on the rope has its own size, set from the Library or from
   Appearance › Charms. A larger charm is heavier too. Drop shadows can be turned off.
 - **Motion:** swing weight, settle speed, and how far below the menu bar the rope hangs.
-- Appearance is split into Rope, Light, Charms, Motion and System tabs.
+- Appearance is split into Rope, Hooks, Hanging, Light, Charms, Motion and System tabs.
 
 ### Fixes
 - A held charm stays under the pointer. The grab used to be fixed in screen space while

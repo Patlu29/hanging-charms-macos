@@ -9,6 +9,8 @@ never touches the network.
 
 ![Every built-in charm](Docs/media/catalogue.png)
 
+<img src="Docs/media/customised.png" alt="Three charms on a red and white chain with a glow along the cord and a teal light under a larger heart" width="360">
+
 ## Features
 
 - **50 charms in 8 collections**: protection, luck, celestial, nature, love, spirit,
@@ -23,6 +25,8 @@ never touches the network.
   under a hard throw.
 - **Make your own.** Drop a photo (PNG, JPEG, HEIC, WebP, SVG or PDF) on the hanging
   charm, or use **Create**. Apple's Vision framework cuts the subject out on your Mac.
+- **Make it yours.** Rope colours, thickness and pattern; glow colour, brightness and
+  size; a size for each charm on the rope; swing weight, settle speed and hang height.
 - **Motion and mood.** Elastic and pointer-reactive ropes, swing that changes with the
   time of day, a breathing glow, and synthesised charm chimes.
 - **Out of the way.** Click-through everywhere but the charm; always on top or on the
@@ -31,21 +35,29 @@ never touches the network.
 
 ## Installing
 
-Download `HangingCharms-<version>.zip` from the latest CI run's artifacts (or build it,
-below), unzip it and move **Hanging Charms.app** to Applications.
+1. Download **HangingCharms-1.1.0.zip** from the
+   [latest release](https://github.com/Patlu29/hanging-charms-macos/releases/latest).
+2. Unzip it and drag **Hanging Charms.app** into **Applications**.
+3. Open it. The app is not notarised by Apple, so macOS blocks it the first time:
+   - **macOS 15 Sequoia and later:** click **Done**, open **System Settings › Privacy &
+     Security**, scroll down, click **Open Anyway** next to Hanging Charms, and confirm.
+   - **macOS 14 Sonoma:** Control-click the app, choose **Open**, then **Open** again.
 
-The app is ad-hoc signed, not notarised, so the first time macOS will refuse to open it.
-Control-click the app, choose **Open**, then **Open** again. Or:
+   Or clear the download flag in Terminal, then open it normally:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Hanging Charms.app"
 ```
 
-Click the charm icon in the menu bar for the menu. Opening the app again shows the Library.
+It runs on macOS 14 or later, on Apple silicon and Intel. Click the charm icon in the menu
+bar for the menu; opening the app again shows the Library. To remove it, quit it from the
+menu and move it to the Bin.
 
 ## Using it
 
 - **Grab** a charm and throw it. **Double-click** it to open the Library.
+- **Flick** the pointer quickly through a charm to knock it; a slow approach lets you
+  pick it up instead.
 - **Right-click** it for the Library, Create, Appearance, the rope picker, or Hide.
 - **Drop a picture** on it to make a charm of your own.
 
@@ -126,8 +138,8 @@ which needs no Screen Recording permission; window titles are never read.
 ## Progress
 
 Work is tracked in [issues](https://github.com/Patlu29/hanging-charms-macos/issues) under
-the **v1.0 macOS MVP** milestone, one issue per part, each closed by the commit that
-delivered it.
+the **v1.0 macOS MVP** and **v1.1 Customisation and release** milestones, one issue per
+part, each closed by the commit that delivered it. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits
 

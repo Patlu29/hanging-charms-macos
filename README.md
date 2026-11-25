@@ -13,9 +13,11 @@ never touches the network.
 
 ## Features
 
-- **50 charms in 8 collections**: protection, luck, celestial, nature, love, spirit,
-  classics and animals. Search them, favourite them, see what you hung recently. Every
-  charm is drawn at run time in metal or enamel; there are no bitmap assets.
+- **154 charms in 16 collections**: protection, luck, celestial, nature, love, spirit,
+  classics, animals, zodiac, birthstones, celebration, food and drink, travel, sports and
+  hobbies, weather, and initials A to Z. Search them, favourite them, see what you hung
+  recently. Every charm is drawn at run time in metal, enamel or cut gemstone; there are
+  no bitmap assets.
 - **Up to three charms on one rope**, in any order. Each adds its own weight and its own
   stretch of cord, and stacked charms never pass through each other.
 - **Nine ropes, each with its own physics.** A gold chain is heavier and slower than a
@@ -62,11 +64,18 @@ menu and move it to the Bin.
 
 ## Using it
 
+**New to Hanging Charms? Read the [guide to using it](Docs/USAGE.md):** getting started,
+the Library, making your own charm, every Appearance option, hanging points,
+troubleshooting and removing the app.
+
+The short version:
+
 - **Grab** a charm and throw it. **Double-click** it to open the Library.
 - **Flick** the pointer quickly through a charm to knock it; a slow approach lets you
   pick it up instead.
 - **Drag the top of the rope** to hang it somewhere else.
-- **Right-click** it for the Library, Create, Appearance, the rope picker, or Hide.
+- **Right-click** it for the Library, Create, Appearance, the rope, where it hangs, auto
+  swing, breeze, or Hide.
 - **Drop a picture** on it to make a charm of your own.
 
 | Shortcut | Does |

@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Library
+- **154 charms in 16 collections** (from 50 in 8). New: **Zodiac** (12 signs, coloured
+  by element), **Birthstones** (a cut gem for every month), **Initials** (A to Z),
+  **Celebration**, **Food and Drink**, **Travel**, **Sports and Hobbies** and
+  **Weather**, plus more animals, a love letter and a meditation charm.
+- All is grouped under collection headings, and the collections moved into a menu.
+
+### Motion
+- **Auto swing:** a steady pendulum swing (small, medium or large) that holds its size
+  and settles back into rhythm after a push.
+- Picking up a charm no longer makes it hop towards the top of the rope.
+
+### Fixes
+- The **Create** page drew completely blank, so a charm could not be made from a
+  picture. Every Customize page is now checked for this on every build.
+
+### Documentation
+- A [guide to using the app](Docs/USAGE.md), with screenshots of every page.
+
 ## 1.1.0
 
 ### Hanging
